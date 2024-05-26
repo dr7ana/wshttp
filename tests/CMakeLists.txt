@@ -7,8 +7,8 @@ target_link_libraries(
     tests_common
 
     PUBLIC
-    wshttp3
-    wshttp3_internal_warnings
+    wshttp
+    wshttp_internal_warnings
     CLI11::CLI11
 )
     

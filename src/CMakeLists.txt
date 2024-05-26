@@ -1,20 +1,21 @@
 add_library(
-    wshttp3
+    wshttp
 
     format.cpp
+    loop.cpp
     server.cpp
 )
 
 target_link_libraries(
-    wshttp3
+    wshttp
     
     PUBLIC
     spdlog::spdlog_header_only
     fmt::fmt
     wslay::wslay
     nghttp2::nghttp2
-    wshttp3_external
+    wshttp_external
 
     PRIVATE
-    wshttp3_internal
+    wshttp_internal
 )

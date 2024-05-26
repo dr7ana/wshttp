@@ -1,6 +1,6 @@
 #include "server.hpp"
 
-namespace wshttp3
+namespace wshttp
 {
     //
-}  //  namespace wshttp3
+}  //  namespace wshttp

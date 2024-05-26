@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
     if (int rc = session.applyCommandLine(argc, argv); rc != 0)
         return rc;
 
-    wshttp3::log->set_level(log_level);
+    wshttp::log->set_level(log_level);
 
     return session.run(argc, argv);
 }

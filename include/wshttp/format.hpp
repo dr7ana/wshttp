@@ -2,6 +2,7 @@
 
 #include <fmt/core.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/common.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -11,7 +12,7 @@
 
 using namespace std::literals;
 
-namespace wshttp3
+namespace wshttp
 {
     inline const auto PATTERN_COLOR = "[%H:%M:%S.%e] >> [\x1b[1m%n\x1b[0m:%^%l%$] >> %v"s;
 
@@ -114,11 +115,11 @@ namespace wshttp3
     // global logger
     extern std::shared_ptr<Logger> log;
 
-}  //  namespace wshttp3
+}  //  namespace wshttp
 
 namespace fmt
 {
-    template <wshttp3::ToStringFormattable T>
+    template <wshttp::ToStringFormattable T>
     struct formatter<T, char> : formatter<std::string_view>
     {
         template <typename FormatContext>

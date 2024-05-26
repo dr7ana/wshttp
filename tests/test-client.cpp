@@ -2,7 +2,7 @@
 
 int main(int argc, char* argv[])
 {
-    CLI::App cli{"WSHTTP3 test client"};
+    CLI::App cli{"WSHTTP test client"};
 
     std::string log_level = "debug";
 
@@ -18,7 +18,7 @@ int main(int argc, char* argv[])
         return cli.exit(e);
     }
 
-    wshttp3::log->set_level(log_level);
+    wshttp::log->set_level(log_level);
 
     try
     {
@@ -26,7 +26,7 @@ int main(int argc, char* argv[])
     }
     catch (const std::exception& e)
     {
-        wshttp3::log->critical("Failed to start client: {}!", e.what());
+        wshttp::log->critical("Failed to start client: {}!", e.what());
         return 1;
     }
 

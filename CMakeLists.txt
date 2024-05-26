@@ -16,22 +16,22 @@ if(CCACHE_PROGRAM)
   endforeach()
 endif()
 
-project(wshttp3
+project(wshttp
     VERSION 0.0.1
     DESCRIPTION "websocket streaming capable http client"
     LANGUAGES ${LANGS})
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
-    set(WSHTTP3_IS_TOPLEVEL_PROJECT TRUE)
+    set(WSHTTP_IS_TOPLEVEL_PROJECT TRUE)
 else()
-    set(WSHTTP3_IS_TOPLEVEL_PROJECT FALSE)
+    set(WSHTTP_IS_TOPLEVEL_PROJECT FALSE)
 endif()
 
 # TODO: not configured yet for shared vs static
 option(BUILD_SHARED_LIBS "Build as shared library" OFF)
 option(BUILD_STATIC_DEPS "Build and link against static dependencies" OFF)
 option(WARNINGS_AS_ERRORS "Treat all warnings as errors. turn off for development, on for release" OFF)
-option(WSHTTP3_BUILD_TESTS "Build wshttp3 test suite" ${WSHTTP3_IS_TOPLEVEL_PROJECT})
+option(WSHTTP_BUILD_TESTS "Build wshttp test suite" ${WSHTTP_IS_TOPLEVEL_PROJECT})
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,12 +63,12 @@ if(IPO_ENABLED AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
 endif()
 
 # external interface target for any general includes meant to be publicly inherited
-add_library(wshttp3_external INTERFACE)
-target_include_directories(wshttp3_external INTERFACE include)
+add_library(wshttp_external INTERFACE)
+target_include_directories(wshttp_external INTERFACE include)
 
 # internal interface target for flags, paths, etc
-add_library(wshttp3_internal INTERFACE)
-target_include_directories(wshttp3_internal INTERFACE include/wshttp3)
+add_library(wshttp_internal INTERFACE)
+target_include_directories(wshttp_internal INTERFACE include/wshttp)
 
 option(WARNINGS_AS_ERRORS "treat all warnings as errors. turn off for development, on for release" OFF)
 
@@ -79,10 +79,10 @@ endif()
 if(WARNINGS_AS_ERRORS)
     list(APPEND warning_flags -Werror)
 endif()
-add_library(wshttp3_internal_warnings INTERFACE)
+add_library(wshttp_internal_warnings INTERFACE)
 
-target_compile_options(wshttp3_internal_warnings INTERFACE "$<$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:C>>:${warning_flags}>")
-target_link_libraries(wshttp3_internal INTERFACE wshttp3_internal_warnings)
+target_compile_options(wshttp_internal_warnings INTERFACE "$<$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:C>>:${warning_flags}>")
+target_link_libraries(wshttp_internal INTERFACE wshttp_internal_warnings)
 
 include(FetchContent)
 
@@ -95,6 +95,6 @@ FetchContent_MakeAvailable(fmt)
 add_subdirectory(external)
 add_subdirectory(src)
 
-if(WSHTTP3_BUILD_TESTS)
+if(WSHTTP_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

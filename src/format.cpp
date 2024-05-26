@@ -4,7 +4,7 @@
 
 #include <stdexcept>
 
-namespace wshttp3
+namespace wshttp
 {
     // global logger from format.hpp
     std::shared_ptr<Logger> log = std::make_shared<Logger>();
@@ -43,9 +43,9 @@ namespace wshttp3
     void Logger::_logger_init(std::string sink, std::string level)
     {
         if (sink == "stderr")
-            _logger = spdlog::stderr_color_mt("wshttp3", spdlog::color_mode::always);
+            _logger = spdlog::stderr_color_mt("wshttp", spdlog::color_mode::always);
         else if (sink == "stdout")
-            _logger = spdlog::stdout_color_mt("wshttp3", spdlog::color_mode::always);
+            _logger = spdlog::stdout_color_mt("wshttp", spdlog::color_mode::always);
 
         auto formatter = std::make_shared<spdlog::pattern_formatter>();
 
@@ -58,4 +58,4 @@ namespace wshttp3
         spdlog::shutdown();
     }
 
-}  // namespace wshttp3
+}  // namespace wshttp

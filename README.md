@@ -1,2 +1,2 @@
-# wshttp3
+# wshttp
 websocket streaming capable http client
