@@ -1,0 +1,15 @@
+[submodule "external/nghttp2"]
+	path = external/nghttp2
+	url = https://github.com/nghttp2/nghttp2.git
+[submodule "external/wslay"]
+	path = external/wslay
+	url = https://github.com/tatsuhiro-t/wslay.git
+[submodule "external/spdlog"]
+	path = external/spdlog
+	url = https://github.com/gabime/spdlog.git
+[submodule "tests/CLI11"]
+	path = tests/CLI11
+	url = https://github.com/CLIUtils/CLI11.git
+[submodule "tests/Catch2"]
+	path = tests/Catch2
+	url = https://github.com/catchorg/Catch2.git
