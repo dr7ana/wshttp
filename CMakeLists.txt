@@ -68,7 +68,7 @@ target_include_directories(wshttp3_external INTERFACE include)
 
 # internal interface target for flags, paths, etc
 add_library(wshttp3_internal INTERFACE)
-target_include_directories(wshttp3_internal INTERFACE include/lib/wshttp3)
+target_include_directories(wshttp3_internal INTERFACE include/wshttp3)
 
 option(WARNINGS_AS_ERRORS "treat all warnings as errors. turn off for development, on for release" OFF)
 

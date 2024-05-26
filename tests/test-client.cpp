@@ -2,7 +2,7 @@
 
 int main(int argc, char* argv[])
 {
-    CLI::App cli{"ZHTTP test client"};
+    CLI::App cli{"WSHTTP3 test client"};
 
     std::string log_level = "debug";
 
@@ -18,17 +18,15 @@ int main(int argc, char* argv[])
         return cli.exit(e);
     }
 
-    zhttp::log->set_level(log_level);
+    wshttp3::log->set_level(log_level);
 
     try
     {
-        auto c = zhttp::Client::make();
-
-        c->get("127.0.0.2:6900", "connecttothatmotherfucker");
+        //
     }
     catch (const std::exception& e)
     {
-        zhttp::log->critical("Failed to start client: {}!", e.what());
+        wshttp3::log->critical("Failed to start client: {}!", e.what());
         return 1;
     }
 
