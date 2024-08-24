@@ -24,6 +24,47 @@ namespace wshttp
         } -> std::convertible_to<std::string_view>;
     };
 
+    namespace detail
+    {
+        template <size_t N>
+        struct string_literal
+        {
+            consteval string_literal(const char (&s)[N])
+            {
+                std::copy(s, s + N, str.begin());
+            }
+
+            consteval std::string_view sv() const
+            {
+                return {str.data(), N};
+            }
+            std::array<char, N> str;
+        };
+
+        template <string_literal Format>
+        struct fmt_wrapper
+        {
+            consteval fmt_wrapper() = default;
+
+            /// Calling on this object forwards all the values to fmt::format, using the format string
+            /// as provided during type definition (via the "..."_format user-defined function).
+            template <typename... T>
+            constexpr auto operator()(T&&... args) &&
+            {
+                return fmt::format(Format.sv(), std::forward<T>(args)...);
+            }
+        };
+    }  //  namespace detail
+
+    namespace literals
+    {
+        template <detail::string_literal Format>
+        inline consteval auto operator""_format()
+        {
+            return detail::fmt_wrapper<Format>{};
+        }
+    }  // namespace literals
+
     class Logger
     {
       public:
@@ -114,7 +155,6 @@ namespace wshttp
 
     // global logger
     extern std::shared_ptr<Logger> log;
-
 }  //  namespace wshttp
 
 namespace fmt

@@ -27,15 +27,92 @@ namespace wshttp
         });
     }
 
-    Loop::Loop(std::shared_ptr<::event_base> loop_ptr, std::thread::id thread_id)
-        : ev_loop{std::move(loop_ptr)}, loop_thread_id{thread_id}
+    /** Static casting to `decltype(timeval::tv_{sec,usec})` makes sure that;
+        - on linux
+            .tv_sec is type __time_t
+            .tv_usec is type __suseconds_t
+        - on OSX    (https://developer.apple.com/documentation/kernel/timeval)
+            .tv_sec is type __darwin_time_t
+                - this is an annoying typedef of `time_t`
+            .tv_usec is type __darwin_suseconds_t
+                - this is an equally annoying typedef for `suseconds_t`
+        Alas, yet again another mac idiosyncrasy...
+     */
+    timeval loop_time_to_timeval(std::chrono::microseconds t)
     {
-        assert(ev_loop);
-        log->trace("Beginning event loop creation with pre-existing ev loop thread");
+        return timeval{
+            .tv_sec = static_cast<decltype(timeval::tv_sec)>(t / 1s),
+            .tv_usec = static_cast<decltype(timeval::tv_usec)>((t % 1s) / 1us)};
+    }
 
-        setup_job_waker();
+    bool Ticker::start()
+    {
+        if (_is_running)
+            return false;
 
-        running.store(true);
+        if (event_add(ev.get(), &interval) != 0)
+        {
+            log->critical("EventHandler failed to start repeating event!");
+            return false;
+        }
+
+        _is_running = true;
+
+        return true;
+    }
+
+    bool Ticker::stop()
+    {
+        if (not _is_running)
+            return false;
+
+        if (event_del(ev.get()) != 0)
+        {
+            log->critical("EventHandler failed to pause repeating event!");
+            return false;
+        }
+
+        _is_running = false;
+
+        return true;
+    }
+
+    void Ticker::start_event(
+        const loop_ptr& _loop,
+        std::chrono::microseconds _interval,
+        std::function<void()> task,
+        bool persist,
+        bool start_immediately)
+    {
+        f = std::move(task);
+        interval = loop_time_to_timeval(_interval);
+
+        ev.reset(event_new(
+            _loop.get(),
+            -1,
+            persist ? EV_PERSIST : 0,
+            [](evutil_socket_t, short, void* s) {
+                try
+                {
+                    auto* self = reinterpret_cast<Ticker*>(s);
+                    // execute callback
+                    self->f();
+                }
+                catch (const std::exception& e)
+                {
+                    log->critical("EventHandler caught exception: {}", e.what());
+                }
+            },
+            this));
+
+        if (start_immediately and not start())
+            log->critical("Failed to immediately start event repeater!");
+    }
+
+    Ticker::~Ticker()
+    {
+        ev.reset();
+        f = nullptr;
     }
 
     static std::vector<std::string_view> get_ev_methods()
@@ -44,6 +121,11 @@ namespace wshttp
         for (const char** methods = event_get_supported_methods(); methods && *methods; methods++)
             ev_methods_avail.emplace_back(*methods);
         return ev_methods_avail;
+    }
+
+    std::shared_ptr<Loop> Loop::make()
+    {
+        return std::shared_ptr<Loop>{new Loop{}};
     }
 
     Loop::Loop()
@@ -76,7 +158,7 @@ namespace wshttp
 
         static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
 
-        log->debug(
+        log->trace(
             "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
 
         std::unique_ptr<event_config, decltype(&event_config_free)> ev_conf{event_config_new(), event_config_free};
@@ -85,7 +167,7 @@ namespace wshttp
 
         ev_loop = std::shared_ptr<event_base>{event_base_new_with_config(ev_conf.get()), event_base_free};
 
-        log->info("Started libevent loop with backend {}", event_base_get_method(ev_loop.get()));
+        log->debug("Started libevent loop with backend {}", event_base_get_method(ev_loop.get()));
 
         setup_job_waker();
 
@@ -109,11 +191,18 @@ namespace wshttp
     {
         log->info("Shutting down loop...");
 
-        if (loop_thread)
-            event_base_loopbreak(ev_loop.get());
+        stop_thread();
 
-        if (loop_thread and loop_thread->joinable())
-            loop_thread->join();
+        for (auto& [id, list] : tickers)
+        {
+            std::for_each(list.begin(), list.end(), [](auto& t) {
+                if (auto tick = t.lock())
+                {
+                    tick->f = nullptr;
+                    tick->stop();
+                }
+            });
+        }
 
         log->info("Loop shutdown complete");
 
@@ -122,28 +211,50 @@ namespace wshttp
 #endif
     }
 
-    void Loop::call_soon(std::function<void(void)> f)
+    void Loop::stop_thread(bool immediate)
     {
-        {
-            std::lock_guard lock{job_queue_mutex};
-            job_queue.emplace(std::move(f));
-            log->trace("Event loop now has {} jobs queued", job_queue.size());
-        }
-
-        event_active(job_waker.get(), 0, 0);
-    }
-
-    void Loop::shutdown(bool immediate)
-    {
-        log->info("Shutting down loop...");
-
         if (loop_thread)
             immediate ? event_base_loopbreak(ev_loop.get()) : event_base_loopexit(ev_loop.get(), nullptr);
 
         if (loop_thread and loop_thread->joinable())
             loop_thread->join();
+    }
 
-        log->info("Loop shutdown complete");
+    void Loop::clear_old_tickers()
+    {
+        for (auto& [id, list] : tickers)
+        {
+            for (auto itr = list.begin(); itr != list.end();)
+            {
+                if (itr->expired())
+                    itr = list.erase(itr);
+                else
+                    ++itr;
+            }
+        }
+    }
+
+    std::shared_ptr<Ticker> Loop::make_handler(caller_id_t _id)
+    {
+        clear_old_tickers();
+        auto t = make_shared<Ticker>();
+        tickers[_id].push_back(t);
+        return t;
+    }
+
+    void Loop::stop_tickers(caller_id_t id)
+    {
+        if (auto it = tickers.find(id); it != tickers.end())
+        {
+            for (auto& t : it->second)
+            {
+                if (auto tick = t.lock())
+                {
+                    tick->f = nullptr;
+                    tick->stop();
+                }
+            }
+        }
     }
 
     void Loop::setup_job_waker()

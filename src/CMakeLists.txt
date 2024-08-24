@@ -1,21 +1,30 @@
 add_library(
     wshttp
 
+    client.cpp
+    dns.cpp
     format.cpp
     loop.cpp
-    server.cpp
+    session.cpp
+    stream.cpp
+    types.cpp
+    utils.cpp
 )
 
 target_link_libraries(
     wshttp
     
     PUBLIC
+    nghttp2::nghttp2
+    wslay::wslay
+    libevent::core
+    libevent::threads
     spdlog::spdlog_header_only
     fmt::fmt
-    wslay::wslay
-    nghttp2::nghttp2
     wshttp_external
 
     PRIVATE
     wshttp_internal
 )
+
+target_compile_features(wshttp INTERFACE cxx_std_20)

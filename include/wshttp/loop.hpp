@@ -5,20 +5,79 @@
 #include <atomic>
 #include <cstdint>
 #include <future>
+#include <list>
 #include <memory>
 #include <thread>
 
 namespace wshttp
 {
     using Job = std::function<void()>;
+    using loop_ptr = std::shared_ptr<::event_base>;
+    using event_ptr = std::unique_ptr<::event, decltype(event_deleter)>;
+    using caller_id_t = uint16_t;
 
     static void setup_libevent_logging();
 
-    class Loop
-    {
-        friend class Network;
+    class Loop;
 
-      protected:
+    struct Ticker
+    {
+        friend class Loop;
+
+      private:
+        std::atomic<bool> _is_running{false};
+        event_ptr ev;
+        timeval interval;
+        std::function<void()> f;
+
+        void start_event(
+            const loop_ptr& _loop,
+            std::chrono::microseconds _interval,
+            std::function<void()> task,
+            bool persist = true,
+            bool start_immediately = true);
+
+        Ticker() = default;
+
+      public:
+        ~Ticker();
+
+        bool is_running() const
+        {
+            return _is_running;
+        }
+
+        /** Starts the repeating event on the given interval on Ticker creation
+            Returns:
+                - true: event successfully started
+                - false: event is already running, or failed to start the event
+         */
+        bool start();
+
+        /** Stops the repeating event managed by Ticker
+            Returns:
+                - true: event successfully stopped
+                - false: event is already stopped, or failed to stop the event
+         */
+        bool stop();
+    };
+
+    class Loop final
+    {
+        friend class Client;
+        Loop();
+
+        Loop(const Loop&) = delete;
+        Loop(Loop&&) = delete;
+        Loop& operator=(Loop&&) = delete;
+        Loop& operator=(Loop) = delete;
+
+      public:
+        static std::shared_ptr<Loop> make();
+
+        ~Loop();
+
+      private:
         std::atomic<bool> running{false};
         std::shared_ptr<::event_base> ev_loop;
         std::optional<std::thread> loop_thread;
@@ -28,59 +87,12 @@ namespace wshttp
         std::queue<Job> job_queue;
         std::mutex job_queue_mutex;
 
+        std::unordered_map<caller_id_t, std::list<std::weak_ptr<Ticker>>> tickers;
+
       public:
-        Loop();
-        Loop(std::shared_ptr<::event_base> loop_ptr, std::thread::id thread_id);
-
-        virtual ~Loop();
-
         const std::shared_ptr<::event_base>& loop() const
         {
             return ev_loop;
-        }
-
-        bool in_event_loop() const
-        {
-            return std::this_thread::get_id() == loop_thread_id;
-        }
-
-        // Returns a pointer deleter that defers the actual destruction call to this network
-        // object's event loop.
-        template <typename T>
-        auto loop_deleter()
-        {
-            return [this](T* ptr) { call([ptr] { delete ptr; }); };
-        }
-
-        // Returns a pointer deleter that defers invocation of a custom deleter to the event loop
-        template <typename T, typename Callable>
-        auto wrapped_deleter(Callable&& f)
-        {
-            // return [this, f = std::move(f)](T* ptr) { return call_get([f = std::move(f), ptr]() { return f(ptr); });
-            // };
-            return [this, f = std::forward<Callable>(f)](T* ptr) {
-                return call_get([f = std::forward<Callable>(f), ptr]() { return f(ptr); });
-            };
-        }
-
-        // Similar in concept to std::make_shared<T>, but it creates the shared pointer with a
-        // custom deleter that dispatches actual object destruction to the network's event loop for
-        // thread safety.
-        template <typename T, typename... Args>
-        std::shared_ptr<T> make_shared(Args&&... args)
-        {
-            auto* ptr = new T{std::forward<Args>(args)...};
-            return std::shared_ptr<T>{ptr, loop_deleter<T>()};
-        }
-
-        // Similar to the above make_shared, but instead of forwarding arguments for the
-        // construction of the object, it creates the shared_ptr from the already created object ptr
-        // and wraps the object's deleter in a wrapped_deleter
-        template <typename T, typename Callable>
-        std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter)
-        {
-            // return std::shared_ptr<T>(obj, wrapped_deleter<T>(std::move(deleter)));
-            return std::shared_ptr<T>(obj, wrapped_deleter<T>(std::forward<Callable>(deleter)));
         }
 
         template <typename Callable>
@@ -127,11 +139,159 @@ namespace wshttp
             return fut.get();
         }
 
-        void call_soon(std::function<void(void)> f);
+        /** This overload of `call_every` will begin an indefinitely repeating object tied to the lifetime of `caller`.
+            Prior to executing each iteration, the weak_ptr will be checked to ensure the calling object lifetime has
+            persisted up to that point.
+        */
+        template <typename Callable>
+        void call_every(std::chrono::microseconds interval, std::weak_ptr<void> caller, Callable&& f)
+        {
+            _call_every(interval, std::move(caller), std::forward<Callable>(f), Loop::loop_id);
+        }
 
-        void shutdown(bool immediate = false);
+        /** This overload of `call_every` will return an EventHandler object from which the application can start and
+           stop the repeated event. It is NOT tied to the lifetime of the caller via a weak_ptr. If the application
+           wants to defer start until explicitly calling EventHandler::start(), `start_immediately` should take a false
+           boolean.
+        */
+        template <typename Callable>
+        [[nodiscard]] std::shared_ptr<Ticker> call_every(
+            std::chrono::microseconds interval, Callable&& f, bool start_immediately = true)
+        {
+            return _call_every(interval, std::forward<Callable>(f), Loop::loop_id, start_immediately);
+        }
+
+        template <std::invocable Callable>
+        void call_later(std::chrono::microseconds delay, Callable hook)
+        {
+            if (in_event_loop())
+            {
+                add_oneshot_event(delay, std::move(hook));
+            }
+            else
+            {
+                call_soon([this, func = std::move(hook), target_time = detail::get_time() + delay]() mutable {
+                    auto now = detail::get_time();
+
+                    if (now >= target_time)
+                        func();
+                    else
+                        add_oneshot_event(
+                            std::chrono::duration_cast<std::chrono::microseconds>(target_time - now), std::move(func));
+                });
+            }
+        }
+
+        template <std::invocable Callable>
+        void call_soon(Callable f)
+        {
+            {
+                std::lock_guard lock{job_queue_mutex};
+                job_queue.emplace(std::move(f));
+            }
+
+            event_active(job_waker.get(), 0, 0);
+        }
 
       private:
+        template <std::invocable Callable>
+        void add_oneshot_event(std::chrono::microseconds delay, Callable hook)
+        {
+            auto handler = make_handler(Loop::loop_id);
+            auto& h = *handler;
+
+            h.start_event(
+                loop(),
+                delay,
+                [hndlr = std::move(handler), func = std::move(hook)]() mutable {
+                    auto h = std::move(hndlr);
+                    func();
+                    h.reset();
+                },
+                false);
+        }
+
+        void clear_old_tickers();
+
+        std::shared_ptr<Ticker> make_handler(caller_id_t _id);
+
+        bool in_event_loop() const
+        {
+            return std::this_thread::get_id() == loop_thread_id;
+        }
+
+        static constexpr caller_id_t loop_id{0};
+
+        // Returns a pointer deleter that defers the actual destruction call to this network
+        // object's event loop.
+        template <typename T>
+        auto loop_deleter()
+        {
+            return [this](T* ptr) { call([ptr] { delete ptr; }); };
+        }
+
+        // Returns a pointer deleter that defers invocation of a custom deleter to the event loop
+        template <typename T, std::invocable<T*> Callable>
+        auto wrapped_deleter(Callable f)
+        {
+            return [this, func = std::move(f)](T* ptr) mutable {
+                return call_get([f = std::move(func), ptr]() { return f(ptr); });
+            };
+        }
+
+        // Similar in concept to std::make_shared<T>, but it creates the shared pointer with a
+        // custom deleter that dispatches actual object destruction to the network's event loop for
+        // thread safety.
+        template <typename T, typename... Args>
+        std::shared_ptr<T> make_shared(Args&&... args)
+        {
+            auto* ptr = new T{std::forward<Args>(args)...};
+            return std::shared_ptr<T>{ptr, loop_deleter<T>()};
+        }
+
+        // Similar to the above make_shared, but instead of forwarding arguments for the
+        // construction of the object, it creates the shared_ptr from the already created object ptr
+        // and wraps the object's deleter in a wrapped_deleter
+        template <typename T, typename Callable>
+        std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter)
+        {
+            return std::shared_ptr<T>(obj, wrapped_deleter<T>(std::forward<Callable>(deleter)));
+        }
+
+        // private method invoked in Network destructor by final Network to close shared_ptr
+        void stop_thread(bool immediate = true);
+
+        void stop_tickers(caller_id_t _id);
+
+        template <typename Callable>
+        void _call_every(std::chrono::microseconds interval, std::weak_ptr<void> caller, Callable&& f, caller_id_t _id)
+        {
+            auto handler = make_handler(_id);
+            // grab the reference before giving ownership of the repeater to the lambda
+            auto& h = *handler;
+
+            h.start_event(
+                loop(),
+                interval,
+                [hndlr = std::move(handler), owner = std::move(caller), func = std::forward<Callable>(f)]() mutable {
+                    if (auto ptr = owner.lock())
+                        func();
+                    else
+                        hndlr.reset();
+                });
+        }
+
+        template <typename Callable>
+        [[nodiscard]] std::shared_ptr<Ticker> _call_every(
+            std::chrono::microseconds interval, Callable&& f, caller_id_t _id, bool start_immediately)
+        {
+            auto h = make_handler(_id);
+
+            h->start_event(loop(), interval, std::forward<Callable>(f), true, start_immediately);
+
+            return h;
+        }
+
         void setup_job_waker();
 
         void process_job_queue();
