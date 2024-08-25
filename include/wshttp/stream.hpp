@@ -6,8 +6,7 @@ namespace wshttp
 {
     class Stream
     {
-      public:
-        static std::shared_ptr<Stream> make();
+        Stream();
 
         // No copy, no move; always hold in shared_ptr using static ::make()
         Stream(const Stream&) = delete;
@@ -15,11 +14,14 @@ namespace wshttp
         Stream(Stream&&) = delete;
         Stream& operator=(Stream&&) = delete;
 
-      private:
-        Stream();
+      public:
+        static std::shared_ptr<Stream> make();
 
-        const std::string _uri;
-        const int32_t _id;
+        ~Stream();
+
+      private:
+        std::vector<char> _uri;
+        int32_t _id;
 
       public:
         //

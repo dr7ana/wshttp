@@ -4,7 +4,7 @@ int main(int argc, char* argv[])
 {
     CLI::App cli{"WSHTTP test client"};
 
-    std::string log_level = "debug";
+    std::string log_level{"debug"};
 
     cli.add_option(
         "-L,--log-level", log_level, "Log verbosity level; one of trace, debug, info, warn, error, or critical");
@@ -19,10 +19,11 @@ int main(int argc, char* argv[])
     }
 
     wshttp::log->set_level(log_level);
+    std::unique_ptr<wshttp::Endpoint> ep;
 
     try
     {
-        //
+        ep = wshttp::Endpoint::make();
     }
     catch (const std::exception& e)
     {

@@ -42,10 +42,7 @@ namespace wshttp
       public:
         ~Ticker();
 
-        bool is_running() const
-        {
-            return _is_running;
-        }
+        bool is_running() const { return _is_running; }
 
         /** Starts the repeating event on the given interval on Ticker creation
             Returns:
@@ -64,7 +61,7 @@ namespace wshttp
 
     class Loop final
     {
-        friend class Client;
+        friend class Endpoint;
         Loop();
 
         Loop(const Loop&) = delete;
@@ -90,10 +87,7 @@ namespace wshttp
         std::unordered_map<caller_id_t, std::list<std::weak_ptr<Ticker>>> tickers;
 
       public:
-        const std::shared_ptr<::event_base>& loop() const
-        {
-            return ev_loop;
-        }
+        const std::shared_ptr<::event_base>& loop() const { return ev_loop; }
 
         template <typename Callable>
         void call(Callable&& f)
@@ -215,10 +209,7 @@ namespace wshttp
 
         std::shared_ptr<Ticker> make_handler(caller_id_t _id);
 
-        bool in_event_loop() const
-        {
-            return std::this_thread::get_id() == loop_thread_id;
-        }
+        bool in_event_loop() const { return std::this_thread::get_id() == loop_thread_id; }
 
         static constexpr caller_id_t loop_id{0};
 
@@ -227,7 +218,9 @@ namespace wshttp
         template <typename T>
         auto loop_deleter()
         {
-            return [this](T* ptr) { call([ptr] { delete ptr; }); };
+            return [this](T* ptr) {
+                call([ptr] { delete ptr; });
+            };
         }
 
         // Returns a pointer deleter that defers invocation of a custom deleter to the event loop

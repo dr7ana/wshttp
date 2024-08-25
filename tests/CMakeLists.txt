@@ -22,5 +22,5 @@ add_executable(
 
 target_link_libraries(alltests PRIVATE tests_common Catch2::Catch2)
 
-#add_executable(test-client test-client.cpp)
-#target_link_libraries(test-client PRIVATE tests_common)
+add_executable(test-client test-client.cpp)
+target_link_libraries(test-client PRIVATE tests_common)

@@ -1,8 +1,9 @@
 add_library(
     wshttp
 
-    client.cpp
+    context.cpp
     dns.cpp
+    endpoint.cpp
     format.cpp
     loop.cpp
     session.cpp
@@ -18,6 +19,7 @@ target_link_libraries(
     nghttp2::nghttp2
     wslay::wslay
     libevent::core
+    libevent::extra
     libevent::threads
     spdlog::spdlog_header_only
     fmt::fmt

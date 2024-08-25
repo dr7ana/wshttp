@@ -50,8 +50,9 @@ NamespaceIndentation: All
 # shorties
 AllowShortBlocksOnASingleLine: 'false'
 AllowShortCaseLabelsOnASingleLine: 'false'
-AllowShortFunctionsOnASingleLine: None
+AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: 'false'
+AllowShortLambdasOnASingleLine: Inline
 AllowShortLoopsOnASingleLine: 'false'
 
 # spacing
@@ -81,13 +82,11 @@ IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: '".+\.h'
     Priority: 2
-  - Regex: '^<llarp'
-    Priority: 3
   - Regex: '<winsock2\.h>'
-    Priority: 4
+    Priority: 3
   - Regex: '<windows\.h>'
-    Priority: 5
+    Priority: 4
   - Regex: '^<.*\.h(pp)?>$'
-    Priority: 6
+    Priority: 5
   - Regex: '(<)(.)+(>)'
-    Priority: 7
+    Priority: 6

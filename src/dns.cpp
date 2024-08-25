@@ -1,6 +1,6 @@
 #include "dns.hpp"
 
-#include "client.hpp"
+#include "endpoint.hpp"
 #include "format.hpp"
 #include "types.hpp"
 
@@ -50,15 +50,15 @@ namespace wshttp
 
     namespace dns
     {
-        std::unique_ptr<Server> Server::make(wshttp::Client& c)
+        std::unique_ptr<Server> Server::make(wshttp::Endpoint& e)
         {
-            return std::unique_ptr<Server>{new Server{c}};
+            return std::unique_ptr<Server>{new Server{e}};
         }
 
-        Server::Server(wshttp::Client& c) : _client{c}
+        Server::Server(wshttp::Endpoint& e) : _ep{e}
         {
-            _dns = _client.shared_ptr<evdns_base>(
-                evdns_base_new(_client._loop->loop().get(), EVDNS_BASE_NAMESERVERS_NO_DEFAULT), wshttp::evdns_deleter);
+            _evdns = _ep.shared_ptr<evdns_base>(
+                evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_NAMESERVERS_NO_DEFAULT), wshttp::evdns_deleter);
 
             evdns_set_log_fn([](int is_warning, const char* msg) {
                 if (is_warning)
@@ -68,8 +68,13 @@ namespace wshttp
             });
 
             // apparently this option ensures request addresses are not weirdly capitalized
-            evdns_base_set_option(_dns.get(), "randomize-case:", "0");
+            evdns_base_set_option(_evdns.get(), "randomize-case:", "0");
         }
+
+        // Server::~Server()
+        // {
+
+        // }
 
         void Server::initialize()
         {
@@ -90,8 +95,8 @@ namespace wshttp
             if (auto rv = bind(_udp_sock, reinterpret_cast<sockaddr*>(&_bind), sizeof(sockaddr)); rv < 0)
                 throw std::runtime_error{"DNS server failed to bind UDP port!"};
 
-            _udp_bind = _client.shared_ptr<evdns_server_port>(
-                evdns_add_server_port_with_base(_client._loop->loop().get(), _udp_sock, 0, server_cb, this),
+            _udp_bind = _ep.shared_ptr<evdns_server_port>(
+                evdns_add_server_port_with_base(_ep._loop->loop().get(), _udp_sock, 0, server_cb, this),
                 evdns_port_deleter);
 
             if (not _udp_bind)
@@ -99,9 +104,9 @@ namespace wshttp
 
             log->debug("DNS server successfully configured UDP socket!");
 
-            _tcp_listener = _client.shared_ptr<struct evconnlistener>(
+            _tcp_listener = _ep.shared_ptr<struct evconnlistener>(
                 evconnlistener_new_bind(
-                    _client._loop->loop().get(),
+                    _ep._loop->loop().get(),
                     nullptr,
                     nullptr,
                     LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE,
@@ -118,13 +123,13 @@ namespace wshttp
 
             // we don't need to hold on to this one since we pass LEV_OPT_CLOSE_ON_FREE in creating the
             // evconnlistener, which closes the underlying socket when the listener is freed
-            auto* _tcp_bind = evdns_add_server_port_with_listener(
-                _client._loop->loop().get(), _tcp_listener.get(), 0, server_cb, this);
+            auto* _tcp_bind =
+                evdns_add_server_port_with_listener(_ep._loop->loop().get(), _tcp_listener.get(), 0, server_cb, this);
 
             if (not _tcp_bind)
                 throw std::runtime_error{"DNS server failed to bind server TCP port!"};
 
-            log->info("DNS server successfully configured TCP socket!");
+            log->debug("DNS server successfully configured TCP socket!");
 
             register_nameserver(defaults::DNS_PORT);
         }
@@ -132,7 +137,7 @@ namespace wshttp
         void Server::register_nameserver(uint16_t port)
         {
             auto ns_ip = detail::localhost_ip(port);
-            evdns_base_nameserver_ip_add(_dns.get(), ns_ip.c_str());
+            evdns_base_nameserver_ip_add(_evdns.get(), ns_ip.c_str());
             log->info("Server successfully registered local nameserver ip: {}", ns_ip);
         }
 

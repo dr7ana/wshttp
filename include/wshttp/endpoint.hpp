@@ -2,39 +2,41 @@
 
 #include "loop.hpp"
 
-namespace wshttp::dns
-{
-    class Server;
-}
-
 namespace wshttp
 {
-    class Client final
+    namespace dns
+    {
+        class Server;
+    }
+
+    class Endpoint final
     {
         friend class dns::Server;
 
-        Client();
-        explicit Client(std::shared_ptr<Loop> ev_loop);
-        Client(const Client& c) : Client{c._loop}
-        {}
-
-        Client& operator=(Client) = delete;
-        Client& operator=(Client&&) = delete;
-
       public:
-        static std::unique_ptr<Client> make();
-        static std::unique_ptr<Client> make(std::shared_ptr<Loop> ev_loop);
+        Endpoint();
+        explicit Endpoint(std::shared_ptr<Loop> ev_loop);
+        Endpoint(const Endpoint& c) : Endpoint{c._loop} {}
 
-        ~Client();
+        Endpoint& operator=(Endpoint) = delete;
+        Endpoint& operator=(Endpoint&&) = delete;
 
-        [[nodiscard]] std::unique_ptr<Client> create_linked_client();
+        static std::unique_ptr<Endpoint> make();
+        static std::unique_ptr<Endpoint> make(std::shared_ptr<Loop> ev_loop);
+
+        ~Endpoint();
+
+        [[nodiscard]] std::unique_ptr<Endpoint> create_linked_client();
 
       private:
         std::shared_ptr<Loop> _loop;
-        std::atomic<bool> _close_immediately{false};
+
+        std::unique_ptr<dns::Server> _dns;
 
         const caller_id_t client_id;
         static caller_id_t next_client_id;
+
+        std::atomic<bool> _close_immediately{false};
 
       public:
         template <typename Callable>
@@ -49,10 +51,7 @@ namespace wshttp
             return _loop->call_get(std::forward<Callable>(f));
         }
 
-        void call_soon(std::function<void(void)> f)
-        {
-            _loop->call_soon(std::move(f));
-        }
+        void call_soon(std::function<void(void)> f) { _loop->call_soon(std::move(f)); }
 
         template <typename Callable>
         void call_every(std::chrono::microseconds interval, std::weak_ptr<void> caller, Callable&& f)
@@ -73,10 +72,7 @@ namespace wshttp
             _loop->call_later(delay, std::forward<Callable>(hook));
         }
 
-        void set_shutdown_immediate(bool b = true)
-        {
-            _close_immediately = b;
-        }
+        void set_shutdown_immediate(bool b = true) { _close_immediately = b; }
 
       private:
         template <typename T, typename Callable>
@@ -91,11 +87,8 @@ namespace wshttp
             return _loop->make_shared<T>(std::forward<Args>(args)...);
         }
 
-        bool in_event_loop() const
-        {
-            return _loop->in_event_loop();
-        }
+        bool in_event_loop() const { return _loop->in_event_loop(); }
 
-        void teardown_client();
+        void shutdown_endpoint();
     };
 }  //  namespace wshttp

@@ -21,6 +21,8 @@ namespace wshttp
       public:
         static std::shared_ptr<Session> make();
 
+        ~Session();
+
       private:
         std::unique_ptr<nghttp2_session, decltype(session_deleter)> _session;
 
@@ -40,7 +42,5 @@ namespace wshttp
         {
             return _session.get();
         }
-
-        ~Session();
     };
 }  //  namespace wshttp

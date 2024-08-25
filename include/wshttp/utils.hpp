@@ -11,6 +11,8 @@ extern "C"
 #include <event2/listener.h>
 #include <event2/thread.h>
 #include <nghttp2/nghttp2.h>
+#include <openssl/ssl.h>
+#include <openssl/types.h>
 }
 
 #include <chrono>
@@ -53,6 +55,11 @@ namespace wshttp
     inline constexpr auto evconnlistener_deleter = [](::evconnlistener* e) {
         if (e)
             evconnlistener_free(e);
+    };
+
+    inline constexpr auto ssl_deleter = [](::SSL_CTX* s) {
+        if (s)
+            SSL_CTX_free(s);
     };
 
     namespace detail

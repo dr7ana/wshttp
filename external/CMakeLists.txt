@@ -16,7 +16,6 @@ set(ENABLE_DOC OFF CACHE BOOL "")
 set(BUILD_STATIC_LIBS ON CACHE BOOL "")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
 add_subdirectory(nghttp2 EXCLUDE_FROM_ALL)
-#add_library(nghttp2::nghttp2 ALIAS nghttp2_static)
 
 # wslay
 set(WSLAY_CONFIGURE_INSTALL OFF CACHE BOOL "")
