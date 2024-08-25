@@ -19,17 +19,22 @@ int main(int argc, char* argv[])
     }
 
     wshttp::log->set_level(log_level);
-    std::unique_ptr<wshttp::Endpoint> ep;
+
+    auto loop = wshttp::Loop::make();
+    std::shared_ptr<wshttp::Endpoint> ep;
 
     try
     {
-        ep = wshttp::Endpoint::make();
+        ep = wshttp::Endpoint::make(loop);
+        ep->listen(5544);
     }
     catch (const std::exception& e)
     {
-        wshttp::log->critical("Failed to start client: {}!", e.what());
+        wshttp::log->critical("Failed to start client: {}", e.what());
         return 1;
     }
+
+    ep.reset();
 
     for (;;)
         std::this_thread::sleep_for(10min);

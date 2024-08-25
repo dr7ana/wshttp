@@ -1,6 +1,7 @@
 add_library(
     wshttp
 
+    callbacks.cpp
     context.cpp
     dns.cpp
     endpoint.cpp

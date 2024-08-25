@@ -13,11 +13,11 @@ namespace wshttp::dns
     {
         friend class wshttp::Endpoint;
 
-        // Server() = delete;
+      public:
+        Server() = delete;
         explicit Server(wshttp::Endpoint& e);
 
-      public:
-        static std::unique_ptr<Server> make(wshttp::Endpoint& e);
+        [[nodiscard]] static std::unique_ptr<Server> make(wshttp::Endpoint& e);
 
         ~Server() = default;
 

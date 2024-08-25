@@ -93,6 +93,7 @@ FetchContent_Declare(fmt
 FetchContent_MakeAvailable(fmt)
 
 add_link_options(-lexplain)
+add_link_options(-lssl -lcrypto)
 
 add_subdirectory(external)
 add_subdirectory(src)

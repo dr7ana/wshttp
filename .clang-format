@@ -19,7 +19,7 @@ BraceWrapping:
   AfterCaseLabel: true
   AfterClass: true
   AfterControlStatement: true
-  AfterEnum: true
+  AfterEnum: false
   AfterFunction: true
   AfterNamespace: true
   AfterObjCDeclaration: true
@@ -50,6 +50,7 @@ NamespaceIndentation: All
 # shorties
 AllowShortBlocksOnASingleLine: 'false'
 AllowShortCaseLabelsOnASingleLine: 'false'
+AllowShortEnumsOnASingleLine: 'true'
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: 'false'
 AllowShortLambdasOnASingleLine: Inline

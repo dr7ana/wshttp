@@ -101,7 +101,7 @@ namespace wshttp
 
         auto formatter = std::make_unique<spdlog::pattern_formatter>();
         formatter->add_flag<startup_elapsed_flag>('*');
-        formatter->set_pattern(PATTERN_COLOR2);
+        formatter->set_pattern(PATTERN_COLOR);
         _logger->set_formatter(std::move(formatter));
         _logger->set_level(_translate_level(level));
     }

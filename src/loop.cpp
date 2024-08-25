@@ -213,6 +213,7 @@ namespace wshttp
 
     void Loop::stop_thread(bool immediate)
     {
+        log->debug("Stopping loop thread...");
         if (loop_thread)
             immediate ? event_base_loopbreak(ev_loop.get()) : event_base_loopexit(ev_loop.get(), nullptr);
 

@@ -16,8 +16,6 @@ namespace wshttp
     using event_ptr = std::unique_ptr<::event, decltype(event_deleter)>;
     using caller_id_t = uint16_t;
 
-    static void setup_libevent_logging();
-
     class Loop;
 
     struct Ticker
@@ -70,7 +68,7 @@ namespace wshttp
         Loop& operator=(Loop) = delete;
 
       public:
-        static std::shared_ptr<Loop> make();
+        [[nodiscard]] static std::shared_ptr<Loop> make();
 
         ~Loop();
 

@@ -11,11 +11,14 @@ extern "C"
 #include <event2/listener.h>
 #include <event2/thread.h>
 #include <nghttp2/nghttp2.h>
+#include <openssl/conf.h>
+#include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/types.h>
 }
 
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -24,6 +27,7 @@ extern "C"
 namespace wshttp
 {
     using namespace std::literals;
+    namespace fs = std::filesystem;
 
     using bstring = std::basic_string<std::byte>;
     using ustring = std::basic_string<unsigned char>;
