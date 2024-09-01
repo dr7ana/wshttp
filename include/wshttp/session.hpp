@@ -1,12 +1,9 @@
 #pragma once
 
-#include "utils.hpp"
+#include "types.hpp"
 
 namespace wshttp
 {
-    template <typename T>
-    concept SessionWrapper = std::is_same_v<T, nghttp2_session>;
-
     class Stream;
 
     class Session
@@ -31,13 +28,13 @@ namespace wshttp
         std::unordered_map<std::string, Stream> _streams;
 
       public:
-        template <SessionWrapper T>
+        template <concepts::SessionWrapper T>
         operator const T*() const
         {
             return _session.get();
         }
 
-        template <SessionWrapper T>
+        template <concepts::SessionWrapper T>
         operator T*()
         {
             return _session.get();

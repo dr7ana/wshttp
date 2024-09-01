@@ -1,12 +1,15 @@
 add_library(
     wshttp
 
+    address.cpp
     callbacks.cpp
     context.cpp
     dns.cpp
+    encoding.cpp
     endpoint.cpp
     format.cpp
     loop.cpp
+    parser.cpp
     session.cpp
     stream.cpp
     types.cpp
@@ -22,6 +25,7 @@ target_link_libraries(
     libevent::core
     libevent::extra
     libevent::threads
+    ada::ada
     spdlog::spdlog_header_only
     fmt::fmt
     wshttp_external

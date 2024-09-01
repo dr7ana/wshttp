@@ -4,12 +4,16 @@
 
 namespace wshttp
 {
-    using ssl_ptr = std::unique_ptr<::SSL_CTX, decltype(ssl_deleter)>;
-
+    class Endpoint;
     class app_context;
+
+    using ssl_ptr = std::unique_ptr<::SSL_CTX, decltype(ssl_deleter)>;
+    using ctx_ptr = std::unique_ptr<app_context>;
 
     class IOContext
     {
+        friend class Endpoint;
+
         explicit IOContext(const std::string& keyfile, const std::string& certfile);
 
       public:
@@ -23,9 +27,7 @@ namespace wshttp
         const fs::path _keyfile;
         const fs::path _certfile;
 
-        std::unique_ptr<app_context> _inbounds;
-
-        std::unique_ptr<app_context> _o;
+        std::unordered_map<uint16_t, ctx_ptr> _listen_ctx;
     };
 
     class app_context
@@ -50,3 +52,16 @@ namespace wshttp
     };
 
 }  //  namespace wshttp
+
+namespace std
+{
+    template <>
+    struct hash<wshttp::app_context>
+    {
+        size_t operator()(const wshttp::app_context& c) const noexcept
+        {
+            (void)c;
+            return {};
+        };
+    };
+}  //  namespace std

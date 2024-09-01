@@ -4,7 +4,7 @@
 
 namespace wshttp
 {
-    // global logger from format.hpp
+    // extern logger, sink from format.hpp
     std::shared_ptr<Logger> log = Logger::make_logger();
     std::shared_ptr<spdlog::sinks::dist_sink_mt> sink = Logger::make_sink();
 

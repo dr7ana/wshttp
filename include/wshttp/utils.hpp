@@ -17,7 +17,9 @@ extern "C"
 #include <openssl/types.h>
 }
 
+#include <array>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -33,6 +35,8 @@ namespace wshttp
     using ustring = std::basic_string<unsigned char>;
     using bstring_view = std::basic_string_view<std::byte>;
     using ustring_view = std::basic_string_view<unsigned char>;
+
+    using tcp_listener = std::shared_ptr<evconnlistener>;
 
     inline constexpr auto localhost = "127.0.0.1"sv;
 
@@ -101,6 +105,13 @@ namespace wshttp
         std::string translate_req_class(int t);
 
         std::string localhost_ip(uint16_t port);
+
+        template <std::integral T>
+        constexpr bool increment_will_overflow(T val)
+        {
+            return std::numeric_limits<T>::max() == val;
+        }
+
     }  // namespace detail
 
     inline ustring operator""_us(const char* str, size_t len) noexcept

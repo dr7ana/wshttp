@@ -40,12 +40,20 @@ namespace wshttp
         const caller_id_t client_id;
         static caller_id_t next_client_id;
 
-        std::shared_ptr<evconnlistener> _listener;
+        std::unordered_map<uint16_t, tcp_listener> _listeners;
 
         std::atomic<bool> _close_immediately{false};
 
       public:
-        bool listen(uint16_t port);
+        template <typename... Opt>
+        bool listen(uint16_t port)
+        {
+            return _listen(port);
+        }
+
+        void request(std::string url);
+
+        void test_parse_method(std::string url);
 
         template <typename Callable>
         void call(Callable&& f)
@@ -83,6 +91,8 @@ namespace wshttp
         void set_shutdown_immediate(bool b = true) { _close_immediately = b; }
 
       private:
+        bool _listen(uint16_t port);
+
         template <typename T, typename Callable>
         std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter)
         {

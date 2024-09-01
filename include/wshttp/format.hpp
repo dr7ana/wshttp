@@ -19,13 +19,16 @@ namespace wshttp
     inline const auto PATTERN_COLOR = "[%H:%M:%S.%e] [%*] [\x1b[1m%n\x1b[0m:%^%l%$] >> %v"s;
     inline const auto PATTERN_COLOR2 = "[%H:%M:%S.%e] [%*] [\x1b[1m%n\x1b[0m:%^%l%$|\x1b[3m%g:%#\x1b[0m] >> %v"s;
 
-    // Types can opt-in to being fmt-formattable by ensuring they have a ::to_string() method defined
-    template <typename T>
-    concept ToStringFormattable = requires(T a) {
-        {
-            a.to_string()
-        } -> std::convertible_to<std::string_view>;
-    };
+    namespace concepts
+    {
+        // Types can opt-in to being fmt-formattable by ensuring they have a ::to_string() method defined
+        template <typename T>
+        concept ToStringFormattable = requires(T a) {
+            {
+                a.to_string()
+            } -> std::convertible_to<std::string_view>;
+        };
+    }  // namespace concepts
 
     namespace detail
     {
@@ -34,7 +37,7 @@ namespace wshttp
         {
             consteval string_literal(const char (&s)[N]) { std::copy(s, s + N, str.begin()); }
 
-            consteval std::string_view sv() const { return {str.data(), N}; }
+            consteval std::string_view sv() const { return {str.data(), N - 1}; }
             std::array<char, N> str;
         };
 
@@ -149,13 +152,6 @@ namespace wshttp
       private:
         std::shared_ptr<spdlog::logger> _logger;
 
-        // template <typename... Args>
-        // void _critical(fmt::format_string<Args...> fmt, Args&&... args, const std::source_location& loc =
-        // std::source_location::current())
-        // {
-
-        // }
-
         void _logger_init(std::string sink, std::string level);
         spdlog::level::level_enum _translate_level(std::string_view level);
     };
@@ -167,7 +163,7 @@ namespace wshttp
 
 namespace fmt
 {
-    template <wshttp::ToStringFormattable T>
+    template <wshttp::concepts::ToStringFormattable T>
     struct formatter<T, char> : formatter<std::string_view>
     {
         template <typename FormatContext>

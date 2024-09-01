@@ -25,9 +25,6 @@ namespace wshttp
     {
         if (_keyfile.empty() or _certfile.empty())
             throw std::invalid_argument{"Empty paths"};
-
-        _inbounds = app_context::make(IO::I, _keyfile, _certfile);
-        _o = app_context::make(IO::O, _keyfile, _certfile);
     }
 
     std::unique_ptr<app_context> app_context::make(IOContext::IO _d, const fs::path& _key, const fs::path& _cert)

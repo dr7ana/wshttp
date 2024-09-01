@@ -16,3 +16,6 @@
 [submodule "external/libevent"]
 	path = external/libevent
 	url = https://github.com/libevent/libevent.git
+[submodule "external/ada"]
+	path = external/ada
+	url = https://github.com/ada-url/ada.git

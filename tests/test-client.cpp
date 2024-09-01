@@ -27,6 +27,9 @@ int main(int argc, char* argv[])
     {
         ep = wshttp::Endpoint::make(loop);
         ep->listen(5544);
+        ep->listen(5545);
+        ep->listen(5546);
+        ep->test_parse_method("https://www.google.com");
     }
     catch (const std::exception& e)
     {

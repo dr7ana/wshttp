@@ -15,7 +15,7 @@ namespace wshttp
 
         Server::Server(wshttp::Endpoint& e) : _ep{e}
         {
-            _evdns = _ep.shared_ptr<evdns_base>(
+            _evdns = _ep.template shared_ptr<evdns_base>(
                 evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_NAMESERVERS_NO_DEFAULT), wshttp::evdns_deleter);
 
             evdns_set_log_fn([](int is_warning, const char* msg) {
@@ -48,7 +48,7 @@ namespace wshttp
             if (auto rv = bind(_udp_sock, reinterpret_cast<sockaddr*>(&_bind), sizeof(sockaddr)); rv < 0)
                 throw std::runtime_error{"DNS server failed to bind UDP port!"};
 
-            _udp_bind = _ep.shared_ptr<evdns_server_port>(
+            _udp_bind = _ep.template shared_ptr<evdns_server_port>(
                 evdns_add_server_port_with_base(_ep._loop->loop().get(), _udp_sock, 0, callbacks::dns_server_cb, this),
                 evdns_port_deleter);
 
@@ -57,7 +57,7 @@ namespace wshttp
 
             log->debug("DNS server successfully configured UDP socket!");
 
-            _tcp_listener = _ep.shared_ptr<struct evconnlistener>(
+            _tcp_listener = _ep.template shared_ptr<struct evconnlistener>(
                 evconnlistener_new_bind(
                     _ep._loop->loop().get(),
                     nullptr,

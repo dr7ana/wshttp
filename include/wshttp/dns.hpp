@@ -26,7 +26,7 @@ namespace wshttp::dns
       private:
         wshttp::Endpoint& _ep;
 
-        std::shared_ptr<evconnlistener> _tcp_listener;
+        tcp_listener _tcp_listener;
         std::shared_ptr<evdns_server_port> _udp_bind;
         evutil_socket_t _udp_sock;
         std::shared_ptr<evdns_base> _evdns;
