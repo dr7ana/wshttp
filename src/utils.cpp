@@ -1,6 +1,7 @@
 #include "utils.hpp"
 
 #include "format.hpp"
+#include "internal.hpp"
 
 namespace wshttp
 {
@@ -29,35 +30,6 @@ namespace wshttp
                     return "SOA-REQUEST"s;
                 default:
                     return "UNKNOWN-REQUEST"s;
-            }
-        }
-
-        void print_req(struct evdns_server_request* req)
-        {
-            auto msg = "\n----- INCOMING REQUEST -----\nFlags:{}\nNum questions:{}\n"_format(
-                req->flags, req->nquestions ? req->nquestions : 0);
-
-            if (req->nquestions)
-            {
-                for (int i = 0; i < req->nquestions; ++i)
-                {
-                    auto* q = req->questions[i];
-                    msg += "Question #{}\nName: {} -- Type: {} -- Class: {}"_format(
-                        i + 1, q->name, translate_req_type(q->type), translate_req_class(q->dns_question_class));
-                }
-            }
-
-            log->critical("{}", msg);
-        }
-
-        std::string translate_req_class(int t)
-        {
-            switch (t)
-            {
-                case EVDNS_CLASS_INET:
-                    return "CLASS-INET"s;
-                default:
-                    return "CLASS-UNKNOWN"s;
             }
         }
 

@@ -21,14 +21,15 @@ int main(int argc, char* argv[])
     wshttp::log->set_level(log_level);
 
     auto loop = wshttp::Loop::make();
+    auto creds = wshttp::ssl_creds::make(wshttp::KEY_FILE_PLACEHOLDER, wshttp::CERT_FILE_PLACEHOLDER);
     std::shared_ptr<wshttp::Endpoint> ep;
 
     try
     {
         ep = wshttp::Endpoint::make(loop);
-        ep->listen(5544);
-        ep->listen(5545);
-        ep->listen(5546);
+        ep->listen(5544, creds);
+        ep->listen(5545, creds);
+        ep->listen(5546, creds);
         ep->test_parse_method("https://www.google.com");
     }
     catch (const std::exception& e)

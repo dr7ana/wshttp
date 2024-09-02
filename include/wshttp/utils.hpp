@@ -100,10 +100,6 @@ namespace wshttp
 
         std::string translate_req_type(int t);
 
-        void print_req(struct evdns_server_request* req);
-
-        std::string translate_req_class(int t);
-
         std::string localhost_ip(uint16_t port);
 
         template <std::integral T>

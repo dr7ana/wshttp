@@ -6,6 +6,46 @@
 
 namespace wshttp
 {
+    void dns_callbacks::server_cb(struct evdns_server_request* req, void* user_data)
+    {
+        auto* server = reinterpret_cast<wshttp::dns::Server*>(user_data);
+        assert(server);
+
+        detail::print_dns_req(req);
+
+        int r;
+        auto n_reqs = req ? req->nquestions : 0;
+
+        for (int i = 0; i < n_reqs; ++i)
+        {
+            auto q = req->questions[i];
+
+            switch (q->type)
+            {
+                case EVDNS_TYPE_A:
+                case EVDNS_TYPE_AAAA:
+                case EVDNS_TYPE_CNAME:
+                    r = server->main_lookup(req, q);
+                    break;
+                case EVDNS_TYPE_PTR:
+                case EVDNS_TYPE_SOA:
+                default:
+                    log->critical("Server received invalid request type: {}", detail::translate_req_type(q->type));
+                    break;
+            };
+        }
+
+        r = evdns_server_request_respond(req, 0);
+
+        if (r < 0)
+        {
+            log->critical("Server failed to respond to request... dropping like its hot");
+            evdns_server_request_drop(req);
+        }
+        else
+            log->info("Server successfully responded to request!");
+    };
+
     namespace dns
     {
         std::unique_ptr<Server> Server::make(wshttp::Endpoint& e)
@@ -43,13 +83,13 @@ namespace wshttp
 
             _bind.sin_family = AF_INET;
             _bind.sin_addr.s_addr = INADDR_ANY;
-            _bind.sin_port = htons(defaults::DNS_PORT);
+            _bind.sin_port = enc::host_to_big(defaults::DNS_PORT);
 
             if (auto rv = bind(_udp_sock, reinterpret_cast<sockaddr*>(&_bind), sizeof(sockaddr)); rv < 0)
                 throw std::runtime_error{"DNS server failed to bind UDP port!"};
 
             _udp_bind = _ep.template shared_ptr<evdns_server_port>(
-                evdns_add_server_port_with_base(_ep._loop->loop().get(), _udp_sock, 0, callbacks::dns_server_cb, this),
+                evdns_add_server_port_with_base(_ep._loop->loop().get(), _udp_sock, 0, dns_callbacks::server_cb, this),
                 evdns_port_deleter);
 
             if (not _udp_bind)
@@ -77,7 +117,7 @@ namespace wshttp
             // we don't need to hold on to this one since we pass LEV_OPT_CLOSE_ON_FREE in creating the
             // evconnlistener, which closes the underlying socket when the listener is freed
             auto* _tcp_bind = evdns_add_server_port_with_listener(
-                _ep._loop->loop().get(), _tcp_listener.get(), 0, callbacks::dns_server_cb, this);
+                _ep._loop->loop().get(), _tcp_listener.get(), 0, dns_callbacks::server_cb, this);
 
             if (not _tcp_bind)
                 throw std::runtime_error{"DNS server failed to bind server TCP port!"};

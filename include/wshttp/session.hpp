@@ -8,7 +8,6 @@ namespace wshttp
 
     class Session
     {
-        Session();
         // No copy, no move; always hold in shared_ptr using static ::make()
         Session(const Session&) = delete;
         Session& operator=(const Session&) = delete;
@@ -16,25 +15,25 @@ namespace wshttp
         Session& operator=(Session&&) = delete;
 
       public:
+        Session();
+
         static std::shared_ptr<Session> make();
 
         ~Session();
 
-      private:
+      protected:
         std::unique_ptr<nghttp2_session, decltype(session_deleter)> _session;
 
-        // HTTP streams mapped to remote uri
-        // TODO: make URI struct
-        std::unordered_map<std::string, Stream> _streams;
+        std::unordered_map<uint32_t, Stream> _streams;
 
       public:
-        template <concepts::SessionWrapper T>
+        template <concepts::nghttp2_session_type T>
         operator const T*() const
         {
             return _session.get();
         }
 
-        template <concepts::SessionWrapper T>
+        template <concepts::nghttp2_session_type T>
         operator T*()
         {
             return _session.get();

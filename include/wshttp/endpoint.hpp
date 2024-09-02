@@ -1,18 +1,33 @@
 #pragma once
 
+#include "format.hpp"
+#include "listener.hpp"
 #include "loop.hpp"
+#include "node.hpp"
+#include "parser.hpp"
 
 namespace wshttp
 {
-    class IOContext;
+    using namespace wshttp::literals;
+
+    struct ssl_creds;
 
     namespace dns
     {
         class Server;
     }
 
+    template <typename... Opt>
+    static constexpr void check_for_ssl_creds()
+    {
+        static_assert(
+            (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<ssl_creds>>) == 1,
+            "Node listen/connect require exactly one std::shared_ptr<ssl_creds> argument");
+    }
+
     class Endpoint final
     {
+        friend class Listener;
         friend class dns::Server;
 
       public:
@@ -28,30 +43,70 @@ namespace wshttp
 
         ~Endpoint();
 
-        [[nodiscard]] std::shared_ptr<Endpoint> create_linked_endpoint();
+        [[nodiscard]] std::shared_ptr<Endpoint> create_linked_node();
 
       private:
         std::shared_ptr<Loop> _loop;
 
         std::shared_ptr<dns::Server> _dns;
 
-        std::shared_ptr<IOContext> _ctx;
-
         const caller_id_t client_id;
         static caller_id_t next_client_id;
 
-        std::unordered_map<uint16_t, tcp_listener> _listeners;
+        // local listeners managing inbound https connections
+        std::unordered_map<uint16_t, std::shared_ptr<Listener>> _listeners;
+        // local nodes manging outbound https connections
+        std::unordered_map<std::string, std::shared_ptr<Node>> _nodes;
 
         std::atomic<bool> _close_immediately{false};
 
       public:
         template <typename... Opt>
-        bool listen(uint16_t port)
+        bool listen(uint16_t port, Opt&&... opts)
         {
-            return _listen(port);
+            check_for_ssl_creds<Opt...>();
+
+            return call_get([&]() {
+                auto [itr, b] = _listeners.try_emplace(port, nullptr);
+
+                if (not b)
+                    throw std::invalid_argument{
+                        "Cannot create tcp-listener at port {} -- listener already exists!"_format(port)};
+
+                itr->second = Listener::make(*this, port, std::forward<Opt>(opts)...);
+
+                if (not itr->second)
+                    throw std::runtime_error{"TCP listener construction is fucked"};
+
+                log->critical("Endpoint deployed tcp-listener on port {}", port);
+                return true;
+            });
         }
 
-        void request(std::string url);
+        template <typename... Opt>
+        bool connect(std::string url, Opt&&... opts)
+        {
+            check_for_ssl_creds<Opt...>();
+
+            return call_get([&]() {
+                if (not parser->read(url))
+                    throw std::invalid_argument{"Failed to parse input url: {}"_format(url)};
+
+                auto [itr, b] = _nodes.try_emplace(parser->href_str(), nullptr);
+
+                if (not b)
+                    throw std::invalid_argument{
+                        "Cannot create outbound node for href {} -- node already exists!"_format(parser->href_sv())};
+
+                itr->second = Node::make(*this, std::forward<Opt>(opts)...);
+
+                if (not itr->second)
+                    throw std::runtime_error{"Node construction is fucked"};
+
+                log->critical("Endpoint deployed node for outbound to uri [{}]", url);
+                return true;
+            });
+        }
 
         void test_parse_method(std::string url);
 
@@ -91,8 +146,6 @@ namespace wshttp
         void set_shutdown_immediate(bool b = true) { _close_immediately = b; }
 
       private:
-        bool _listen(uint16_t port);
-
         template <typename T, typename Callable>
         std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter)
         {
@@ -107,6 +160,6 @@ namespace wshttp
 
         bool in_event_loop() const { return _loop->in_event_loop(); }
 
-        void shutdown_endpoint();
+        void shutdown_node();
     };
 }  //  namespace wshttp

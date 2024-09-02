@@ -4,40 +4,36 @@
 
 namespace wshttp
 {
-    static constexpr auto KEY_FILE_PLACEHOLDER = ""sv;
-    static constexpr auto CERT_FILE_PLACEHOLDER = ""sv;
-
-    std::unique_ptr<IOContext> IOContext::make(const std::string& keyfile, const std::string& certfile)
+    int ctx_callbacks::server_select_alpn_proto_cb(
+        SSL *, const unsigned char **out, unsigned char *outlen, const unsigned char *in, unsigned int inlen, void *arg)
     {
-        try
+        (void)arg;  // user argument
+        if (nghttp2_select_alpn(out, outlen, in, inlen) != 1)
         {
-            return std::unique_ptr<IOContext>{new IOContext{keyfile, certfile}};
+            log->critical("Failed to select ALPN proto!");
+            return SSL_TLSEXT_ERR_NOACK;
         }
-        catch (const std::exception& e)
+
+        return SSL_TLSEXT_ERR_OK;
+    }
+
+    void app_context::handle_io_opt(std::shared_ptr<ssl_creds> c)
+    {
+        _creds = std::move(c);
+    }
+
+    void app_context::_init()
+    {
+        switch (_dir)
         {
-            log->critical("IOContext exception: {}", e.what());
-            throw;  // TODO: this is OK for now
+            case IO::INBOUND:
+                return _init_outbound(_creds->_keyfile.c_str(), _creds->_certfile.c_str());
+            case IO::OUTBOUND:
+                return _init_inbound(_creds->_keyfile.c_str(), _creds->_certfile.c_str());
         }
     }
 
-    IOContext::IOContext(const std::string& keyfile, const std::string& certfile)
-        : _keyfile{keyfile}, _certfile{certfile}
-    {
-        if (_keyfile.empty() or _certfile.empty())
-            throw std::invalid_argument{"Empty paths"};
-    }
-
-    std::unique_ptr<app_context> app_context::make(IOContext::IO _d, const fs::path& _key, const fs::path& _cert)
-    {
-        return std::unique_ptr<app_context>{new app_context{_d, _key, _cert}};
-    }
-
-    app_context::app_context(IOContext::IO _d, const fs::path& _key, const fs::path& _cert) : _dir{_d}
-    {
-        _dir ? _init_outbound(_key.c_str(), _cert.c_str()) : _init_inbound(_key.c_str(), _cert.c_str());
-    }
-
-    void app_context::_init_inbound(const char* _keyfile, const char* _certfile)
+    void app_context::_init_inbound(const char *_keyfile, const char *_certfile)
     {
         auto ssl = SSL_CTX_new(TLS_server_method());
         if (not ssl)
@@ -54,21 +50,19 @@ namespace wshttp
                 "Failed to set SSLL curves list: {}"_format(ERR_error_string(ERR_get_error(), NULL))};
 
         // if (SSL_CTX_use_PrivateKey_file(ssl, _keyfile, SSL_FILETYPE_PEM) != 1)
-        if (SSL_CTX_use_PrivateKey_file(ssl, KEY_FILE_PLACEHOLDER.data(), SSL_FILETYPE_PEM) != 1)
+        if (SSL_CTX_use_PrivateKey_file(ssl, _keyfile, SSL_FILETYPE_PEM) != 1)
             throw std::runtime_error{"Failed to read private key file!"};
 
         // if (SSL_CTX_use_certificate_chain_file(ssl, _certfile) != 1)
-        if (SSL_CTX_use_certificate_chain_file(ssl, CERT_FILE_PLACEHOLDER.data()) != 1)
+        if (SSL_CTX_use_certificate_chain_file(ssl, _certfile) != 1)
             throw std::runtime_error{"Failed to read certificate file!"};
 
-        SSL_CTX_set_alpn_select_cb(ssl, callbacks::server_select_alpn_proto_cb, NULL);
+        SSL_CTX_set_alpn_select_cb(ssl, ctx_callbacks::server_select_alpn_proto_cb, NULL);
 
         _ctx.reset(ssl);
-        (void)_keyfile;
-        (void)_certfile;
     }
 
-    void app_context::_init_outbound(const char* _keyfile, const char* _certfile)
+    void app_context::_init_outbound(const char *_keyfile, const char *_certfile)
     {
         (void)_keyfile;
         (void)_certfile;

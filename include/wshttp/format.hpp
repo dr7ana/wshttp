@@ -23,7 +23,7 @@ namespace wshttp
     {
         // Types can opt-in to being fmt-formattable by ensuring they have a ::to_string() method defined
         template <typename T>
-        concept ToStringFormattable = requires(T a) {
+        concept to_string_formattable = requires(T a) {
             {
                 a.to_string()
             } -> std::convertible_to<std::string_view>;
@@ -163,7 +163,7 @@ namespace wshttp
 
 namespace fmt
 {
-    template <wshttp::concepts::ToStringFormattable T>
+    template <wshttp::concepts::to_string_formattable T>
     struct formatter<T, char> : formatter<std::string_view>
     {
         template <typename FormatContext>

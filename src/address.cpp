@@ -2,9 +2,21 @@
 
 #include "encoding.hpp"
 #include "internal.hpp"
+#include "parser.hpp"
 
 namespace wshttp
 {
+    uri uri::parse(std::string url)
+    {
+        return parser->read(std::move(url)) ? parser->extract() : uri{};
+    }
+
+    ipv4::ipv4(struct in_addr* a)
+    {
+        std::memmove(&addr, &a->s_addr, sizeof(a->s_addr));
+        enc::big_to_host_inplace(addr);
+    }
+
     ipv4::ipv4(const std::string& str)
     {
         detail::parse_addr(AF_INET, &addr, str);

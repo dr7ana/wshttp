@@ -1,65 +1,14 @@
 #pragma once
 
+#include "encoding.hpp"
 #include "format.hpp"
-#include "utils.hpp"
 
 namespace wshttp
 {
     using namespace wshttp::literals;
 
-    class _parser;
-
-    extern std::shared_ptr<_parser> parser;
-
-    class _parser
-    {
-      protected:
-        std::optional<std::string> _data;
-
-        virtual bool _parse() = 0;
-
-      public:
-        virtual ~_parser() = default;
-
-        static std::shared_ptr<_parser> make();
-
-        virtual bool read(const std::string &input)
-        {
-            _data.emplace(input);
-            log->critical("{}", _data.value_or("YOU FUKED IT"));
-            if (_parse())
-                return true;
-            _data.reset();
-            return false;
-        }
-
-        virtual void print_aggregates() = 0;
-    };
-
-    namespace concepts
-    {
-        template <typename T>
-        concept ParserType = std::is_base_of_v<_parser, T>;
-    }  // namespace concepts
-
     namespace detail
     {
-        template <concepts::ParserType parser_t>
-        std::shared_ptr<parser_t> make_parser()
-        {
-            static std::shared_ptr<parser_t> p;
-            if (not p)
-                p = std::static_pointer_cast<parser_t>(_parser::make());
-            return p;
-        }
-
-        template <std::integral T>
-        T *increment_ptr(T *ptr, int inc)
-        {
-            return ptr + (inc * sizeof(decltype(*ptr)));
-        }
-
-        // Wrapper around inet_pton that throws an exception on error
         inline void parse_addr(int af, void *dest, const std::string &from)
         {
             auto rv = inet_pton(af, from.c_str(), dest);
@@ -69,9 +18,38 @@ namespace wshttp
             if (rv < 0)
                 throw std::system_error{errno, std::system_category()};
         }
+
+        inline constexpr std::string_view translate_dns_req_class(int t)
+        {
+            switch (t)
+            {
+                case EVDNS_CLASS_INET:
+                    return "CLASS-INET"sv;
+                default:
+                    return "CLASS-UNKNOWN"sv;
+            }
+        }
+
+        inline void print_dns_req(struct evdns_server_request *req)
+        {
+            auto msg = "\n----- INCOMING REQUEST -----\nFlags:{}\nNum questions:{}\n"_format(
+                req->flags, req->nquestions ? req->nquestions : 0);
+
+            if (req->nquestions)
+            {
+                for (int i = 0; i < req->nquestions; ++i)
+                {
+                    auto *q = req->questions[i];
+                    msg += "Question #{}\nName: {} -- Type: {} -- Class: {}"_format(
+                        i + 1, q->name, translate_req_type(q->type), translate_dns_req_class(q->dns_question_class));
+                }
+            }
+
+            log->critical("{}", msg);
+        }
     }  // namespace detail
 
-    struct callbacks
+    struct ctx_callbacks
     {
         static int server_select_alpn_proto_cb(
             SSL *,
@@ -80,8 +58,18 @@ namespace wshttp
             const unsigned char *in,
             unsigned int inlen,
             void *arg);
+    };
 
-        static void dns_server_cb(struct evdns_server_request *req, void *user_data);
+    struct dns_callbacks
+    {
+        static void server_cb(struct evdns_server_request *req, void *user_data);
+    };
+
+    struct listen_callbacks
+    {
+        static void event_cb(struct bufferevent *bev, short events, void *ptr);
+        static void accept_cb(
+            struct evconnlistener *listener, evutil_socket_t fd, struct sockaddr *addr, int addrlen, void *arg);
     };
 
 }  // namespace wshttp

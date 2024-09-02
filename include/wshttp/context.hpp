@@ -1,5 +1,6 @@
 #pragma once
 
+#include "types.hpp"
 #include "utils.hpp"
 
 namespace wshttp
@@ -10,47 +11,50 @@ namespace wshttp
     using ssl_ptr = std::unique_ptr<::SSL_CTX, decltype(ssl_deleter)>;
     using ctx_ptr = std::unique_ptr<app_context>;
 
-    class IOContext
+    struct ssl_creds
     {
-        friend class Endpoint;
+        explicit ssl_creds(const std::string_view& keyfile, const std::string_view& certfile)
+            : _keyfile{keyfile}, _certfile{certfile}
+        {
+            // if (_keyfile.empty() or _certfile.empty())
+            //     throw std::invalid_argument{"Empty paths"};
+        }
 
-        explicit IOContext(const std::string& keyfile, const std::string& certfile);
+        static std::shared_ptr<ssl_creds> make(const std::string_view& keyfile, const std::string_view& certfile)
+        {
+            return std::shared_ptr<ssl_creds>{new ssl_creds{keyfile, certfile}};
+        }
 
-      public:
-        IOContext() = delete;
-
-        static std::unique_ptr<IOContext> make(const std::string& keyfile, const std::string& certfile);
-
-        enum IO { I, O };
-
-      private:
         const fs::path _keyfile;
         const fs::path _certfile;
-
-        std::unordered_map<uint16_t, ctx_ptr> _listen_ctx;
     };
 
     class app_context
     {
-        friend class IOContext;
-
-        explicit app_context(IOContext::IO _d, const fs::path& _key, const fs::path& _cert);
+        friend class Endpoint;
 
       public:
         app_context() = delete;
 
-        static std::unique_ptr<app_context> make(IOContext::IO _d, const fs::path& _key, const fs::path& _cert);
-
-        ~app_context() = default;
+        template <typename... Opt>
+        app_context(IO dir, Opt... opts) : _dir{dir}
+        {
+            handle_io_opt(std::forward<Opt>(opts)...);
+            _init();
+        }
 
       private:
-        const IOContext::IO _dir;
+        const IO _dir;
+        std::shared_ptr<ssl_creds> _creds;
         ssl_ptr _ctx;
+
+        void _init();
+
+        void handle_io_opt(std::shared_ptr<ssl_creds> c);
 
         void _init_inbound(const char* _keyfile, const char* _certfile);
         void _init_outbound(const char* _keyfile, const char* _certfile);
     };
-
 }  //  namespace wshttp
 
 namespace std
@@ -60,6 +64,7 @@ namespace std
     {
         size_t operator()(const wshttp::app_context& c) const noexcept
         {
+            // TODO:
             (void)c;
             return {};
         };

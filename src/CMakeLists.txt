@@ -5,11 +5,13 @@ add_library(
     callbacks.cpp
     context.cpp
     dns.cpp
-    encoding.cpp
-    endpoint.cpp
     format.cpp
+    listener.cpp
+    endpoint.cpp
     loop.cpp
+    node.cpp
     parser.cpp
+    request.cpp
     session.cpp
     stream.cpp
     types.cpp
