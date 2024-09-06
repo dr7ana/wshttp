@@ -14,7 +14,7 @@ namespace wshttp
 
     namespace dns
     {
-        class Server;
+        class server;
     }
 
     template <typename... Opt>
@@ -25,38 +25,39 @@ namespace wshttp
             "Node listen/connect require exactly one std::shared_ptr<ssl_creds> argument");
     }
 
-    class Endpoint final
+    class endpoint final
     {
-        friend class Listener;
-        friend class dns::Server;
+        friend class listener;
+        friend class dns::server;
+        friend class session;
 
       public:
-        Endpoint();
-        explicit Endpoint(std::shared_ptr<Loop> ev_loop);
-        Endpoint(const Endpoint& c) : Endpoint{c._loop} {}
+        endpoint();
+        explicit endpoint(std::shared_ptr<event_loop> ev_loop);
+        endpoint(const endpoint& c) : endpoint{c._loop} {}
 
-        Endpoint& operator=(Endpoint) = delete;
-        Endpoint& operator=(Endpoint&&) = delete;
+        endpoint& operator=(endpoint) = delete;
+        endpoint& operator=(endpoint&&) = delete;
 
-        [[nodiscard]] static std::shared_ptr<Endpoint> make();
-        [[nodiscard]] static std::shared_ptr<Endpoint> make(std::shared_ptr<Loop> ev_loop);
+        [[nodiscard]] static std::shared_ptr<endpoint> make();
+        [[nodiscard]] static std::shared_ptr<endpoint> make(std::shared_ptr<event_loop> ev_loop);
 
-        ~Endpoint();
+        ~endpoint();
 
-        [[nodiscard]] std::shared_ptr<Endpoint> create_linked_node();
+        [[nodiscard]] std::shared_ptr<endpoint> create_linked_node();
 
       private:
-        std::shared_ptr<Loop> _loop;
+        std::shared_ptr<event_loop> _loop;
 
-        std::shared_ptr<dns::Server> _dns;
+        std::shared_ptr<dns::server> _dns;
 
         const caller_id_t client_id;
         static caller_id_t next_client_id;
 
         // local listeners managing inbound https connections
-        std::unordered_map<uint16_t, std::shared_ptr<Listener>> _listeners;
+        std::unordered_map<uint16_t, std::shared_ptr<listener>> _listeners;
         // local nodes manging outbound https connections
-        std::unordered_map<std::string, std::shared_ptr<Node>> _nodes;
+        std::unordered_map<std::string, std::shared_ptr<node>> _nodes;
 
         std::atomic<bool> _close_immediately{false};
 
@@ -73,7 +74,7 @@ namespace wshttp
                     throw std::invalid_argument{
                         "Cannot create tcp-listener at port {} -- listener already exists!"_format(port)};
 
-                itr->second = Listener::make(*this, port, std::forward<Opt>(opts)...);
+                itr->second = listener::make(*this, port, std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"TCP listener construction is fucked"};
@@ -98,7 +99,7 @@ namespace wshttp
                     throw std::invalid_argument{
                         "Cannot create outbound node for href {} -- node already exists!"_format(parser->href_sv())};
 
-                itr->second = Node::make(*this, std::forward<Opt>(opts)...);
+                itr->second = node::make(*this, std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"Node construction is fucked"};
@@ -125,16 +126,9 @@ namespace wshttp
         void call_soon(std::function<void(void)> f) { _loop->call_soon(std::move(f)); }
 
         template <typename Callable>
-        void call_every(std::chrono::microseconds interval, std::weak_ptr<void> caller, Callable&& f)
+        [[nodiscard]] std::shared_ptr<ev_watcher> call_every(std::chrono::microseconds interval, Callable&& f)
         {
-            _loop->_call_every(interval, std::move(caller), std::forward<Callable>(f), client_id);
-        }
-
-        template <typename Callable>
-        std::shared_ptr<Ticker> call_every(
-            std::chrono::microseconds interval, Callable&& f, bool start_immediately = true)
-        {
-            return _loop->_call_every(interval, std::forward<Callable>(f), client_id, start_immediately);
+            return _loop->_call_every(interval, std::forward<Callable>(f), client_id);
         }
 
         template <typename Callable>

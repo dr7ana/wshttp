@@ -20,13 +20,13 @@ int main(int argc, char* argv[])
 
     wshttp::log->set_level(log_level);
 
-    auto loop = wshttp::Loop::make();
+    auto loop = wshttp::event_loop::make();
     auto creds = wshttp::ssl_creds::make(wshttp::KEY_FILE_PLACEHOLDER, wshttp::CERT_FILE_PLACEHOLDER);
-    std::shared_ptr<wshttp::Endpoint> ep;
+    std::shared_ptr<wshttp::endpoint> ep;
 
     try
     {
-        ep = wshttp::Endpoint::make(loop);
+        ep = wshttp::endpoint::make(loop);
         ep->listen(5544, creds);
         ep->listen(5545, creds);
         ep->listen(5546, creds);

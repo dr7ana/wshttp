@@ -49,6 +49,12 @@ namespace wshttp
         }
     }  // namespace detail
 
+    struct loop_callbacks
+    {
+        static void exec_oneshot(evutil_socket_t fd, short, void *user_arg);
+        static void exec_iterative(evutil_socket_t fd, short, void *user_arg);
+    };
+
     struct ctx_callbacks
     {
         static int server_select_alpn_proto_cb(

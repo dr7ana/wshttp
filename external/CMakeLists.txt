@@ -28,18 +28,18 @@ add_subdirectory(wslay EXCLUDE_FROM_ALL)
 add_library(wslay::wslay ALIAS wslay)
 
 # spdlog
-set(SPDLOG_USE_STD_FORMAT OFF CACHE BOOL "" FORCE)
-set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "" FORCE)
-add_compile_definitions(SPDLOG_ACTIVE_LEVEL=0)
-add_subdirectory(spdlog)
+set(SPDLOG_FMT_EXTERNAL_HO ON CACHE BOOL "" FORCE)    # todo: add compile check for fmt version
+add_subdirectory(spdlog EXCLUDE_FROM_ALL)
 
 # libevent
+set(EVENT__LIBRARY_TYPE "STATIC" CACHE STRING "" FORCE)
 set(EVENT__DISABLE_TESTS ON CACHE BOOL "" FORCE)
 set(EVENT__DISABLE_MBEDTLS ON CACHE BOOL "" FORCE)
 set(EVENT__DISABLE_BENCHMARK ON CACHE BOOL "" FORCE)
 set(EVENT__DISABLE_SAMPLES ON CACHE BOOL "" FORCE)
 add_subdirectory(libevent)
 
+add_library(libevent::ssl ALIAS event_openssl)
 add_library(libevent::core ALIAS event_core)
 add_library(libevent::threads ALIAS event_pthreads)
 add_library(libevent::extra ALIAS event_extra)

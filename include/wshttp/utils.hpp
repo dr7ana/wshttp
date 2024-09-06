@@ -5,11 +5,14 @@ extern "C"
 #include <arpa/inet.h>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
+#include <event2/bufferevent_ssl.h>
+#include <event2/bufferevent_struct.h>
 #include <event2/dns.h>
 #include <event2/dns_struct.h>
 #include <event2/event.h>
 #include <event2/listener.h>
 #include <event2/thread.h>
+#include <netinet/tcp.h>
 #include <nghttp2/nghttp2.h>
 #include <openssl/conf.h>
 #include <openssl/err.h>
@@ -36,39 +39,9 @@ namespace wshttp
     using bstring_view = std::basic_string_view<std::byte>;
     using ustring_view = std::basic_string_view<unsigned char>;
 
-    using tcp_listener = std::shared_ptr<evconnlistener>;
-
     inline constexpr auto localhost = "127.0.0.1"sv;
 
-    inline constexpr auto event_deleter = [](::event* e) {
-        if (e)
-            ::event_free(e);
-    };
-
-    inline constexpr auto session_deleter = [](nghttp2_session* s) {
-        if (s)
-            nghttp2_session_del(s);
-    };
-
-    inline constexpr auto evdns_deleter = [](::evdns_base* e) {
-        if (e)
-            ::evdns_base_free(e, 1);
-    };
-
-    inline constexpr auto evdns_port_deleter = [](::evdns_server_port* e) {
-        if (e)
-            evdns_close_server_port(e);
-    };
-
-    inline constexpr auto evconnlistener_deleter = [](::evconnlistener* e) {
-        if (e)
-            evconnlistener_free(e);
-    };
-
-    inline constexpr auto ssl_deleter = [](::SSL_CTX* s) {
-        if (s)
-            SSL_CTX_free(s);
-    };
+    inline constexpr size_t inverse_golden_ratio = sizeof(size_t) >= 8 ? 0x9e37'79b9'7f4a'7c15 : 0x9e37'79b9;
 
     namespace detail
     {

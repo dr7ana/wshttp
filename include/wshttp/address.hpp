@@ -1,6 +1,6 @@
 #pragma once
 
-#include "encoding.hpp"
+#include "utils.hpp"
 
 #include <variant>
 
@@ -59,12 +59,7 @@ namespace wshttp
 
         static constexpr bool to_string_formattable = true;
 
-        explicit operator in_addr() const
-        {
-            in_addr a;
-            a.s_addr = htonl(addr);
-            return a;
-        }
+        explicit operator in_addr() const;
 
         constexpr auto operator<=>(const ipv4& a) const { return addr <=> a.addr; }
 
@@ -108,29 +103,26 @@ namespace wshttp
 
     struct ip_address
     {
-        explicit ip_address(struct sockaddr* in)
-        {
-            if (in->sa_family == AF_INET)
-            {
-                auto& in4 = *reinterpret_cast<sockaddr_in*>(in);
-                _ip = ipv4{&in4.sin_addr};
-                _port = in4.sin_port;
-            }
-            else if (in->sa_family == AF_INET6)
-            {
-                auto& in6 = *reinterpret_cast<sockaddr_in6*>(in);
-                _ip = ipv6{&in6.sin6_addr};
-                _port = in6.sin6_port;
-            }
-            else
-                throw std::runtime_error{"Failed to understand incoming address sa_family"};
-
-            enc::big_to_host_inplace(_port);
-        }
+        constexpr ip_address() = default;
+        explicit ip_address(struct sockaddr* in);
 
         template <concepts::ip_type T>
-        explicit ip_address(T v4, uint16_t p) : _ip{v4}, _port{p}
+        constexpr explicit ip_address(T v4, uint16_t p) : _ip{v4}, _port{p}
         {}
+
+        ip_address(const ip_address& a) { _copy_internals(a); }
+        ip_address(ip_address& a) { _copy_internals(a); }
+
+        ip_address& operator=(ip_address& a)
+        {
+            _copy_internals(a);
+            return *this;
+        }
+        ip_address& operator=(const ip_address& a)
+        {
+            _copy_internals(a);
+            return *this;
+        }
 
       private:
         ip_v _ip;        // host order
@@ -142,7 +134,17 @@ namespace wshttp
         ipv6& _ipv6() { return std::get<ipv6>(_ip); }
         const ipv6& _ipv6() const { return std::get<ipv6>(_ip); }
 
-        const bool _is_v4{!_ip.index()};
+        bool _is_v4{!_ip.index()};
+
+        void _copy_internals(const ip_address& a)
+        {
+            using ip_t = decltype(a._ip);
+            _ip = ip_t{a._ip};
+            _port = a._port;
+            _is_v4 = a._is_v4;
+        }
+
+        friend struct std::hash<ip_address>;
 
       public:
         void set_port(uint16_t p) { _port = p; }
@@ -152,8 +154,37 @@ namespace wshttp
         bool is_ipv4() const { return _is_v4; }
 
         std::string to_string() const { return _is_v4 ? _ipv4().to_string() : _ipv6().to_string(); }
+
+        auto operator<=>(const ip_address& a) const { return std::tie(_ip, _port) <=> std::tie(a._ip, a._port); }
+        bool operator==(const ip_address& a) const { return (*this <=> a) == 0; }
     };
 
+    struct path
+    {
+        path() = default;
+
+        path(const ip_address& local, const ip_address& remote) : _local{local}, _remote{remote} {}
+        path(const path& p) : path{p._local, p._remote} {}
+
+        path& operator=(const path& p)
+        {
+            _local = p._local;
+            _remote = p._remote;
+            return *this;
+        }
+
+      private:
+        ip_address _local;
+        ip_address _remote;
+
+      public:
+        ip_address local() { return _local; }
+        const ip_address& local() const { return _local; }
+        ip_address remote() { return _remote; }
+        const ip_address& remote() const { return _remote; }
+    };
+
+    // TODO: unify address type sinto this main container
     struct address
     {
       private:
@@ -167,14 +198,31 @@ namespace wshttp
 
 namespace std
 {
-    // template <>
-    // struct hash<wshttp::uri>
-    // {
-    //     size_t operator()(const wshttp::uri& u) const noexcept
-    //     {
-    //         size_t h{};
+    template <>
+    struct hash<wshttp::ipv4>
+    {
+        size_t operator()(const wshttp::ipv4& v4) const noexcept { return hash<uint32_t>{}(v4.addr); }
+    };
 
-    //         return h;
-    //     }
-    // };
+    template <>
+    struct hash<wshttp::ipv6>
+    {
+        size_t operator()(const wshttp::ipv6& v6) const noexcept
+        {
+            size_t h{};
+            for (const auto& v : v6.addr)
+                h ^= hash<uint16_t>{}(v) + wshttp::inverse_golden_ratio + (h << 7) + (h >> 3);
+            return h;
+        }
+    };
+
+    template <>
+    struct hash<wshttp::ip_address>
+    {
+        size_t operator()(const wshttp::ip_address& ip) const noexcept
+        {
+            using ip_t = decltype(ip._ip);
+            return hash<ip_t>{}(ip._ip);
+        }
+    };
 }  //  namespace std

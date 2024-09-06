@@ -8,33 +8,33 @@ namespace wshttp
 {
     using namespace wshttp::literals;
 
-    caller_id_t Endpoint::next_client_id = 0;
+    caller_id_t endpoint::next_client_id = 0;
 
-    std::shared_ptr<Endpoint> Endpoint::make()
+    std::shared_ptr<endpoint> endpoint::make()
     {
-        return std::shared_ptr<Endpoint>{new Endpoint{}};
+        return std::shared_ptr<endpoint>{new endpoint{}};
     }
 
-    std::shared_ptr<Endpoint> Endpoint::make(std::shared_ptr<Loop> ev_loop)
+    std::shared_ptr<endpoint> endpoint::make(std::shared_ptr<event_loop> ev_loop)
     {
-        return std::shared_ptr<Endpoint>{new Endpoint{std::move(ev_loop)}};
+        return std::shared_ptr<endpoint>{new endpoint{std::move(ev_loop)}};
     }
 
-    Endpoint::Endpoint()
-        : _loop{Loop::make()}, _dns{_loop->template make_shared<dns::Server>(*this)}, client_id{++next_client_id}
+    endpoint::endpoint()
+        : _loop{event_loop::make()}, _dns{_loop->template make_shared<dns::server>(*this)}, client_id{++next_client_id}
     {
         log->trace("Creating client with new event loop!");
         _dns->initialize();
     }
 
-    Endpoint::Endpoint(std::shared_ptr<Loop> ev_loop)
-        : _loop{std::move(ev_loop)}, _dns{_loop->template make_shared<dns::Server>(*this)}, client_id{++next_client_id}
+    endpoint::endpoint(std::shared_ptr<event_loop> ev_loop)
+        : _loop{std::move(ev_loop)}, _dns{_loop->template make_shared<dns::server>(*this)}, client_id{++next_client_id}
     {
         log->trace("Creating client with pre-existing event loop!");
         _dns->initialize();
     }
 
-    Endpoint::~Endpoint()
+    endpoint::~endpoint()
     {
         log->debug("Shutting down client...");
 
@@ -52,12 +52,12 @@ namespace wshttp
         log->info("Client shutdown complete!");
     }
 
-    std::shared_ptr<Endpoint> Endpoint::create_linked_node()
+    std::shared_ptr<endpoint> endpoint::create_linked_node()
     {
-        return Endpoint::make(_loop);
+        return endpoint::make(_loop);
     }
 
-    void Endpoint::test_parse_method(std::string url)
+    void endpoint::test_parse_method(std::string url)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
         return _loop->call_get([&]() mutable {
@@ -69,7 +69,7 @@ namespace wshttp
         });
     }
 
-    void Endpoint::shutdown_node()
+    void endpoint::shutdown_node()
     {
         log->debug("{} called...", __PRETTY_FUNCTION__);
 

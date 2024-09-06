@@ -1,7 +1,6 @@
 #include "loop.hpp"
 
 #include "internal.hpp"
-// #include "utils.hpp"
 
 namespace wshttp
 {
@@ -45,7 +44,50 @@ namespace wshttp
             .tv_usec = static_cast<decltype(timeval::tv_usec)>((t % 1s) / 1us)};
     }
 
-    bool Ticker::start()
+    void loop_callbacks::exec_iterative(int /* fd */, short /* what */, void* user_arg)
+    {
+        try
+        {
+            auto* self = reinterpret_cast<ev_watcher*>(user_arg);
+            if (not self->f)
+            {
+                log->critical("Ticker does not have a callback to execute!");
+                return;
+            }
+            if (not self->is_running())
+            {
+                log->critical("Ticker attempting to execute finished event!");
+                return;
+            }
+            // execute callback
+            self->fire();
+        }
+        catch (const std::exception& e)
+        {
+            log->critical("EventTicker caught exception: {}", e.what());
+        }
+    }
+
+    void loop_callbacks::exec_oneshot(int /* fd */, short /* what */, void* user_arg)
+    {
+        try
+        {
+            auto* self = reinterpret_cast<ev_watcher*>(user_arg);
+            if (not self->f)
+            {
+                log->critical("Ticker does not have a callback to execute!");
+                return;
+            }
+            // execute callback
+            self->f();
+        }
+        catch (const std::exception& e)
+        {
+            log->critical("Ticker caught exception: {}", e.what());
+        }
+    }
+
+    bool ev_watcher::start()
     {
         if (_is_running)
             return false;
@@ -61,7 +103,7 @@ namespace wshttp
         return true;
     }
 
-    bool Ticker::stop()
+    bool ev_watcher::stop()
     {
         if (not _is_running)
             return false;
@@ -77,39 +119,52 @@ namespace wshttp
         return true;
     }
 
-    void Ticker::start_event(
-        const loop_ptr& _loop,
-        std::chrono::microseconds _interval,
-        std::function<void()> task,
-        bool persist,
-        bool start_immediately)
+    void ev_watcher::fire()
     {
-        f = std::move(task);
-        interval = loop_time_to_timeval(_interval);
+        f();
+        event_del(ev.get());
+        event_add(ev.get(), &interval);
+    }
+
+    void ev_watcher::init_event(
+        const loop_ptr& _loop, std::chrono::microseconds _t, std::function<void()> task, bool one_off)
+    {
+        f = one_off ? std::move(task) : [this, func = std::move(task)]() mutable {
+            func();
+            event_del(ev.get());
+            event_add(ev.get(), &interval);
+        };
+
+        interval = loop_time_to_timeval(_t);
 
         ev.reset(event_new(
             _loop.get(),
             -1,
-            persist ? EV_PERSIST : 0,
+            0,
             [](evutil_socket_t, short, void* s) {
                 try
                 {
-                    auto* self = reinterpret_cast<Ticker*>(s);
+                    auto* self = reinterpret_cast<ev_watcher*>(s);
+                    if (not self->f)
+                    {
+                        log->critical("Ticker does not have a callback to execute!");
+                        return;
+                    }
                     // execute callback
                     self->f();
                 }
                 catch (const std::exception& e)
                 {
-                    log->critical("EventHandler caught exception: {}", e.what());
+                    log->critical("Ticker caught exception: {}", e.what());
                 }
             },
             this));
 
-        if (start_immediately and not start())
-            log->critical("Failed to immediately start event repeater!");
+        if (one_off and not start())
+            log->critical("Failed to immediately start one-off event!");
     }
 
-    Ticker::~Ticker()
+    ev_watcher::~ev_watcher()
     {
         ev.reset();
         f = nullptr;
@@ -123,12 +178,12 @@ namespace wshttp
         return ev_methods_avail;
     }
 
-    std::shared_ptr<Loop> Loop::make()
+    std::shared_ptr<event_loop> event_loop::make()
     {
-        return std::shared_ptr<Loop>{new Loop{}};
+        return std::shared_ptr<event_loop>{new event_loop{}};
     }
 
-    Loop::Loop()
+    event_loop::event_loop()
     {
         log->trace("Beginning loop context creation with new ev loop thread");
 
@@ -187,7 +242,7 @@ namespace wshttp
         log->info("loop is started");
     }
 
-    Loop::~Loop()
+    event_loop::~event_loop()
     {
         log->info("Shutting down loop...");
 
@@ -211,7 +266,7 @@ namespace wshttp
 #endif
     }
 
-    void Loop::stop_thread(bool immediate)
+    void event_loop::stop_thread(bool immediate)
     {
         log->debug("Stopping loop thread...");
         if (loop_thread)
@@ -221,7 +276,7 @@ namespace wshttp
             loop_thread->join();
     }
 
-    void Loop::clear_old_tickers()
+    void event_loop::clear_old_tickers()
     {
         for (auto& [id, list] : tickers)
         {
@@ -235,15 +290,15 @@ namespace wshttp
         }
     }
 
-    std::shared_ptr<Ticker> Loop::make_handler(caller_id_t _id)
+    std::shared_ptr<ev_watcher> event_loop::make_handler(caller_id_t _id)
     {
         clear_old_tickers();
-        auto t = make_shared<Ticker>();
+        auto t = make_shared<ev_watcher>();
         tickers[_id].push_back(t);
         return t;
     }
 
-    void Loop::stop_tickers(caller_id_t id)
+    void event_loop::stop_tickers(caller_id_t id)
     {
         if (auto it = tickers.find(id); it != tickers.end())
         {
@@ -258,7 +313,7 @@ namespace wshttp
         }
     }
 
-    void Loop::setup_job_waker()
+    void event_loop::setup_job_waker()
     {
         job_waker.reset(event_new(
             ev_loop.get(),
@@ -266,13 +321,13 @@ namespace wshttp
             0,
             [](evutil_socket_t, short, void* self) {
                 log->trace("processing job queue");
-                static_cast<Loop*>(self)->process_job_queue();
+                static_cast<event_loop*>(self)->process_job_queue();
             },
             this));
         assert(job_waker);
     }
 
-    void Loop::process_job_queue()
+    void event_loop::process_job_queue()
     {
         log->trace("Event loop processing job queue");
         assert(in_event_loop());

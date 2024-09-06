@@ -84,16 +84,7 @@ add_library(wshttp_internal_warnings INTERFACE)
 target_compile_options(wshttp_internal_warnings INTERFACE "$<$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:C>>:${warning_flags}>")
 target_link_libraries(wshttp_internal INTERFACE wshttp_internal_warnings)
 
-include(FetchContent)
-
-FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG master
-)
-FetchContent_MakeAvailable(fmt)
-
 add_link_options(-lexplain)
-add_link_options(-lssl -lcrypto)
 
 add_subdirectory(external)
 add_subdirectory(src)

@@ -1,6 +1,5 @@
 #include "address.hpp"
 
-#include "encoding.hpp"
 #include "internal.hpp"
 #include "parser.hpp"
 
@@ -21,6 +20,13 @@ namespace wshttp
     {
         detail::parse_addr(AF_INET, &addr, str);
         enc::big_to_host_inplace(addr);
+    }
+
+    ipv4::operator in_addr() const
+    {
+        in_addr a;
+        a.s_addr = enc::host_to_big(addr);
+        return a;
     }
 
     std::string ipv4::to_string() const
@@ -69,5 +75,25 @@ namespace wshttp
         inet_ntop(AF_INET6, &temp, buf, sizeof(buf));
 
         return "{}"_format(buf);
+    }
+
+    ip_address::ip_address(struct sockaddr* in)
+    {
+        if (in->sa_family == AF_INET)
+        {
+            auto& in4 = *reinterpret_cast<sockaddr_in*>(in);
+            _ip = ipv4{&in4.sin_addr};
+            _port = in4.sin_port;
+        }
+        else if (in->sa_family == AF_INET6)
+        {
+            auto& in6 = *reinterpret_cast<sockaddr_in6*>(in);
+            _ip = ipv6{&in6.sin6_addr};
+            _port = in6.sin6_port;
+        }
+        else
+            throw std::runtime_error{"Failed to understand incoming address sa_family"};
+
+        enc::big_to_host_inplace(_port);
     }
 }  //  namespace wshttp

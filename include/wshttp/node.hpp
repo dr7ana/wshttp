@@ -5,31 +5,31 @@
 namespace wshttp
 {
     struct uri;
-    class Endpoint;
+    class endpoint;
     class app_context;
 
-    class Node
+    class node
     {
         template <typename... Opt>
-        explicit Node(Endpoint& e, Opt&&... opts) : _ep{e}
+        explicit node(endpoint& e, Opt&&... opts) : _ep{e}
         {
             _ctx = std::make_shared<app_context>(IO::OUTBOUND, std::forward<Opt>(opts)...);
             _init_internals();
         }
 
       public:
-        Node() = delete;
+        node() = delete;
 
-        ~Node() = default;
+        ~node() = default;
 
         template <typename... Opt>
-        static std::shared_ptr<Node> make(Endpoint& e, Opt&&... opts)
+        static std::shared_ptr<node> make(endpoint& e, Opt&&... opts)
         {
-            return std::shared_ptr<Node>{new Node{e, std::forward<Opt>(opts)...}};
+            return std::shared_ptr<node>{new node{e, std::forward<Opt>(opts)...}};
         }
 
       private:
-        Endpoint& _ep;
+        endpoint& _ep;
         uint16_t _port;
 
         std::shared_ptr<app_context> _ctx;

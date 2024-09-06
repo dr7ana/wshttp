@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils.hpp"
+#include "types.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -13,14 +13,14 @@ namespace wshttp
 {
     using Job = std::function<void()>;
     using loop_ptr = std::shared_ptr<::event_base>;
-    using event_ptr = std::unique_ptr<::event, decltype(event_deleter)>;
     using caller_id_t = uint16_t;
 
-    class Loop;
+    class event_loop;
 
-    struct Ticker
+    struct ev_watcher
     {
-        friend class Loop;
+        friend class event_loop;
+        friend struct loop_callbacks;
 
       private:
         std::atomic<bool> _is_running{false};
@@ -28,17 +28,15 @@ namespace wshttp
         timeval interval;
         std::function<void()> f;
 
-        void start_event(
-            const loop_ptr& _loop,
-            std::chrono::microseconds _interval,
-            std::function<void()> task,
-            bool persist = true,
-            bool start_immediately = true);
+        void init_event(
+            const loop_ptr& _loop, std::chrono::microseconds _t, std::function<void()> task, bool one_off = false);
 
-        Ticker() = default;
+        ev_watcher() = default;
+
+        void fire();
 
       public:
-        ~Ticker();
+        ~ev_watcher();
 
         bool is_running() const { return _is_running; }
 
@@ -57,20 +55,20 @@ namespace wshttp
         bool stop();
     };
 
-    class Loop final
+    class event_loop final
     {
-        friend class Endpoint;
-        Loop();
+        friend class endpoint;
+        event_loop();
 
-        Loop(const Loop&) = delete;
-        Loop(Loop&&) = delete;
-        Loop& operator=(Loop&&) = delete;
-        Loop& operator=(Loop) = delete;
+        event_loop(const event_loop&) = delete;
+        event_loop(event_loop&&) = delete;
+        event_loop& operator=(event_loop&&) = delete;
+        event_loop& operator=(event_loop) = delete;
 
       public:
-        [[nodiscard]] static std::shared_ptr<Loop> make();
+        [[nodiscard]] static std::shared_ptr<event_loop> make();
 
-        ~Loop();
+        ~event_loop();
 
       private:
         std::atomic<bool> running{false};
@@ -82,7 +80,7 @@ namespace wshttp
         std::queue<Job> job_queue;
         std::mutex job_queue_mutex;
 
-        std::unordered_map<caller_id_t, std::list<std::weak_ptr<Ticker>>> tickers;
+        std::unordered_map<caller_id_t, std::list<std::weak_ptr<ev_watcher>>> tickers;
 
       public:
         const std::shared_ptr<::event_base>& loop() const { return ev_loop; }
@@ -138,7 +136,7 @@ namespace wshttp
         template <typename Callable>
         void call_every(std::chrono::microseconds interval, std::weak_ptr<void> caller, Callable&& f)
         {
-            _call_every(interval, std::move(caller), std::forward<Callable>(f), Loop::loop_id);
+            _call_every(interval, std::move(caller), std::forward<Callable>(f), event_loop::loop_id);
         }
 
         /** This overload of `call_every` will return an EventHandler object from which the application can start and
@@ -147,10 +145,9 @@ namespace wshttp
            boolean.
         */
         template <typename Callable>
-        [[nodiscard]] std::shared_ptr<Ticker> call_every(
-            std::chrono::microseconds interval, Callable&& f, bool start_immediately = true)
+        [[nodiscard]] std::shared_ptr<ev_watcher> call_every(std::chrono::microseconds interval, Callable&& f)
         {
-            return _call_every(interval, std::forward<Callable>(f), Loop::loop_id, start_immediately);
+            return _call_every(interval, std::forward<Callable>(f), event_loop::loop_id);
         }
 
         template <std::invocable Callable>
@@ -189,10 +186,10 @@ namespace wshttp
         template <std::invocable Callable>
         void add_oneshot_event(std::chrono::microseconds delay, Callable hook)
         {
-            auto handler = make_handler(Loop::loop_id);
+            auto handler = make_handler(event_loop::loop_id);
             auto& h = *handler;
 
-            h.start_event(
+            h.init_event(
                 loop(),
                 delay,
                 [hndlr = std::move(handler), func = std::move(hook)]() mutable {
@@ -200,12 +197,12 @@ namespace wshttp
                     func();
                     h.reset();
                 },
-                false);
+                true);
         }
 
         void clear_old_tickers();
 
-        std::shared_ptr<Ticker> make_handler(caller_id_t _id);
+        std::shared_ptr<ev_watcher> make_handler(caller_id_t _id);
 
         bool in_event_loop() const { return std::this_thread::get_id() == loop_thread_id; }
 
@@ -255,30 +252,12 @@ namespace wshttp
         void stop_tickers(caller_id_t _id);
 
         template <typename Callable>
-        void _call_every(std::chrono::microseconds interval, std::weak_ptr<void> caller, Callable&& f, caller_id_t _id)
-        {
-            auto handler = make_handler(_id);
-            // grab the reference before giving ownership of the repeater to the lambda
-            auto& h = *handler;
-
-            h.start_event(
-                loop(),
-                interval,
-                [hndlr = std::move(handler), owner = std::move(caller), func = std::forward<Callable>(f)]() mutable {
-                    if (auto ptr = owner.lock())
-                        func();
-                    else
-                        hndlr.reset();
-                });
-        }
-
-        template <typename Callable>
-        [[nodiscard]] std::shared_ptr<Ticker> _call_every(
-            std::chrono::microseconds interval, Callable&& f, caller_id_t _id, bool start_immediately)
+        [[nodiscard]] std::shared_ptr<ev_watcher> _call_every(
+            std::chrono::microseconds interval, Callable&& f, caller_id_t _id)
         {
             auto h = make_handler(_id);
 
-            h->start_event(loop(), interval, std::forward<Callable>(f), true, start_immediately);
+            h->init_event(loop(), interval, std::forward<Callable>(f));
 
             return h;
         }

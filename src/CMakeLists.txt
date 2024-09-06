@@ -1,3 +1,6 @@
+set(OPENSSL_USE_STATIC_LIBS ON)
+find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
+
 add_library(
     wshttp
 
@@ -26,10 +29,10 @@ target_link_libraries(
     wslay::wslay
     libevent::core
     libevent::extra
+    libevent::ssl
     libevent::threads
     ada::ada
     spdlog::spdlog_header_only
-    fmt::fmt
     wshttp_external
 
     PRIVATE

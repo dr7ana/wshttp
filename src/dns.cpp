@@ -8,7 +8,7 @@ namespace wshttp
 {
     void dns_callbacks::server_cb(struct evdns_server_request* req, void* user_data)
     {
-        auto* server = reinterpret_cast<wshttp::dns::Server*>(user_data);
+        auto* server = reinterpret_cast<wshttp::dns::server*>(user_data);
         assert(server);
 
         detail::print_dns_req(req);
@@ -48,15 +48,15 @@ namespace wshttp
 
     namespace dns
     {
-        std::unique_ptr<Server> Server::make(wshttp::Endpoint& e)
+        std::unique_ptr<server> server::make(wshttp::endpoint& e)
         {
-            return std::unique_ptr<Server>{new Server{e}};
+            return std::unique_ptr<server>{new server{e}};
         }
 
-        Server::Server(wshttp::Endpoint& e) : _ep{e}
+        server::server(wshttp::endpoint& e) : _ep{e}
         {
             _evdns = _ep.template shared_ptr<evdns_base>(
-                evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_NAMESERVERS_NO_DEFAULT), wshttp::evdns_deleter);
+                evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_NAMESERVERS_NO_DEFAULT), deleters::evdns_d);
 
             evdns_set_log_fn([](int is_warning, const char* msg) {
                 if (is_warning)
@@ -69,7 +69,7 @@ namespace wshttp
             evdns_base_set_option(_evdns.get(), "randomize-case:", "0");
         }
 
-        void Server::initialize()
+        void server::initialize()
         {
             sockaddr_in _bind;
 
@@ -90,7 +90,7 @@ namespace wshttp
 
             _udp_bind = _ep.template shared_ptr<evdns_server_port>(
                 evdns_add_server_port_with_base(_ep._loop->loop().get(), _udp_sock, 0, dns_callbacks::server_cb, this),
-                evdns_port_deleter);
+                deleters::evdns_port_d);
 
             if (not _udp_bind)
                 throw std::runtime_error{"DNS server failed to add UDP port!"};
@@ -106,7 +106,7 @@ namespace wshttp
                     -1,
                     reinterpret_cast<sockaddr*>(&_bind),
                     sizeof(sockaddr)),
-                evconnlistener_deleter);
+                deleters::evconnlistener_d);
 
             if (not _tcp_listener)
             {
@@ -127,14 +127,14 @@ namespace wshttp
             register_nameserver(defaults::DNS_PORT);
         }
 
-        void Server::register_nameserver(uint16_t port)
+        void server::register_nameserver(uint16_t port)
         {
             auto ns_ip = detail::localhost_ip(port);
             evdns_base_nameserver_ip_add(_evdns.get(), ns_ip.c_str());
             log->info("Server successfully registered local nameserver ip: {}", ns_ip);
         }
 
-        int Server::main_lookup(struct evdns_server_request* req, struct evdns_server_question* q)
+        int server::main_lookup(struct evdns_server_request* req, struct evdns_server_question* q)
         {
             log->critical("DNS server received {} req for: {}", detail::translate_req_type(q->type), q->name);
 

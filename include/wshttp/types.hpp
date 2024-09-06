@@ -11,6 +11,60 @@ namespace wshttp
         static constexpr uint16_t DNS_PORT{4400};
     }  // namespace defaults
 
+    namespace deleters
+    {
+
+        inline constexpr auto event_d = [](::event* e) {
+            if (e)
+                ::event_free(e);
+        };
+
+        inline constexpr auto session_d = [](nghttp2_session* s) {
+            if (s)
+                nghttp2_session_del(s);
+        };
+
+        inline constexpr auto evdns_d = [](::evdns_base* e) {
+            if (e)
+                ::evdns_base_free(e, 1);
+        };
+
+        inline constexpr auto evdns_port_d = [](::evdns_server_port* e) {
+            if (e)
+                evdns_close_server_port(e);
+        };
+
+        inline constexpr auto evconnlistener_d = [](::evconnlistener* e) {
+            if (e)
+                evconnlistener_free(e);
+        };
+
+        inline constexpr auto ssl_ctx_d = [](::SSL_CTX* s) {
+            if (s)
+                SSL_CTX_free(s);
+        };
+
+        inline constexpr auto ssl_d = [](::SSL* s) {
+            if (s)
+                SSL_shutdown(s);
+        };
+
+        inline constexpr auto bufferevent_d = [](::bufferevent* b) {
+            if (b)
+                bufferevent_free(b);
+        };
+    }  //  namespace deleters
+
+    using tcp_listener = std::shared_ptr<evconnlistener>;
+
+    using ssl_ptr = std::unique_ptr<::SSL, decltype(deleters::ssl_d)>;
+    using ssl_ctx_ptr = std::unique_ptr<::SSL_CTX, decltype(deleters::ssl_ctx_d)>;
+
+    using event_ptr = std::unique_ptr<::event, decltype(deleters::event_d)>;
+
+    using bufferevent_ptr = std::unique_ptr<::bufferevent, decltype(deleters::bufferevent_d)>;
+    using session_ptr = std::unique_ptr<::nghttp2_session, decltype(deleters::session_d)>;
+
     namespace concepts
     {
         template <typename T>

@@ -1,6 +1,5 @@
 #include "utils.hpp"
 
-#include "format.hpp"
 #include "internal.hpp"
 
 namespace wshttp

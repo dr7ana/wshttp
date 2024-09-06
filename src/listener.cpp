@@ -2,6 +2,7 @@
 
 #include "endpoint.hpp"
 #include "internal.hpp"
+#include "session.hpp"
 
 namespace wshttp
 {
@@ -18,28 +19,37 @@ namespace wshttp
         void *user_arg)
     {
         ip_address remote{addr};
-        sockaddr _local{};
-        socklen_t len;
 
-        if (getsockname(fd, &_local, &len) < 0)
-            throw std::runtime_error{"Failed to get local socket address for incoming (remote: {})"_format(remote)};
-
-        ip_address local{&_local};
-
-        auto &listener = *static_cast<Listener *>(user_arg);
+        auto &l = *static_cast<listener *>(user_arg);
         log->info("Inbound connection established!");
 
-        listener.create_inbound_session(std::move(local), std::move(remote));
+        l.create_inbound_session(std::move(remote), fd);
     }
 
-    void Listener::create_inbound_session(ip_address local, ip_address remote)
+    void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)
     {
-        (void)local;
-        (void)remote;
-        return _ep.call_get([]() {});
+        return _ep.call_get([&]() {
+            auto [it, b] = _sessions.emplace(remote, nullptr);
+
+            if (not b)
+            {
+                log->critical("Connection from {} already exists! Rejecting new inbound...", remote);
+                // TODO: kill the connection here
+                return;
+            }
+
+            it->second = session::make(*this, std::move(remote), fd);
+
+            if (not it->second)
+            {
+                log->critical("Failed to make inbound session for remote: {}", it->first);
+                // TODO: kill the connection here
+                return;
+            }
+        });
     }
 
-    void Listener::_init_internals()
+    void listener::_init_internals()
     {
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
@@ -55,7 +65,7 @@ namespace wshttp
                 -1,
                 reinterpret_cast<sockaddr *>(&addr),
                 sizeof(sockaddr)),
-            evconnlistener_deleter);
+            deleters::evconnlistener_d);
 
         if (not _tcp)
         {

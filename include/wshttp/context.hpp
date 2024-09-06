@@ -1,15 +1,10 @@
 #pragma once
 
 #include "types.hpp"
-#include "utils.hpp"
 
 namespace wshttp
 {
-    class Endpoint;
-    class app_context;
-
-    using ssl_ptr = std::unique_ptr<::SSL_CTX, decltype(ssl_deleter)>;
-    using ctx_ptr = std::unique_ptr<app_context>;
+    class endpoint;
 
     struct ssl_creds
     {
@@ -31,7 +26,7 @@ namespace wshttp
 
     class app_context
     {
-        friend class Endpoint;
+        friend class endpoint;
 
       public:
         app_context() = delete;
@@ -43,10 +38,12 @@ namespace wshttp
             _init();
         }
 
+        const ssl_ctx_ptr& ctx() { return _ctx; }
+
       private:
         const IO _dir;
         std::shared_ptr<ssl_creds> _creds;
-        ssl_ptr _ctx;
+        ssl_ctx_ptr _ctx;
 
         void _init();
 

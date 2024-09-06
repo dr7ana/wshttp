@@ -4,20 +4,20 @@
 
 namespace wshttp
 {
-    class Stream
+    class stream
     {
-        Stream();
+        stream();
 
         // No copy, no move; always hold in shared_ptr using static ::make()
-        Stream(const Stream&) = delete;
-        Stream& operator=(const Stream&) = delete;
-        Stream(Stream&&) = delete;
-        Stream& operator=(Stream&&) = delete;
+        stream(const stream&) = delete;
+        stream& operator=(const stream&) = delete;
+        stream(stream&&) = delete;
+        stream& operator=(stream&&) = delete;
 
       public:
-        static std::shared_ptr<Stream> make();
+        static std::shared_ptr<stream> make();
 
-        ~Stream();
+        ~stream() = default;
 
       private:
         std::vector<char> _uri;
