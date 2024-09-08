@@ -182,6 +182,8 @@ namespace wshttp
         const ip_address& local() const { return _local; }
         ip_address remote() { return _remote; }
         const ip_address& remote() const { return _remote; }
+
+        std::string to_string() const;
     };
 
     // TODO: unify address type sinto this main container

@@ -8,12 +8,14 @@ namespace wshttp
 {
     namespace defaults
     {
-        static constexpr uint16_t DNS_PORT{4400};
+        inline constexpr uint16_t DNS_PORT{4400};
+        
+        inline constexpr auto ALPN = "h2"_usv;
+
     }  // namespace defaults
 
     namespace deleters
     {
-
         inline constexpr auto event_d = [](::event* e) {
             if (e)
                 ::event_free(e);
@@ -76,6 +78,9 @@ namespace wshttp
 
         template <typename T>
         concept nghttp2_nv_type = std::same_as<T, nghttp2_nv>;
+
+        template <typename T>
+        concept nghttp2_settings_type = std::same_as<T, nghttp2_settings_entry>;
     }  // namespace concepts
 
     enum class IO { INBOUND, OUTBOUND };

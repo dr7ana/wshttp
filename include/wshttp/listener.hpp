@@ -11,6 +11,7 @@ namespace wshttp
 
     class listener
     {
+        friend class endpoint;
         friend struct listener_callbacks;
         friend class session;
 

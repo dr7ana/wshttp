@@ -3,6 +3,7 @@
 #include "address.hpp"
 #include "context.hpp"
 #include "listener.hpp"
+#include "request.hpp"
 
 namespace wshttp
 {
@@ -12,6 +13,7 @@ namespace wshttp
     class session
     {
         friend class listener;
+        friend struct session_callbacks;
 
       public:
         session(listener& l, ip_address remote, evutil_socket_t fd);
@@ -31,16 +33,43 @@ namespace wshttp
       private:
         endpoint& _ep;
 
-        ip_address _local;
-        ip_address _remote;
+        evutil_socket_t _fd;
+
+        path _path;
 
         ssl_ptr _ssl;
         bufferevent_ptr _bev;
 
         session_ptr _session;
-        std::unordered_map<uint32_t, stream> _streams;
+        std::unordered_map<uint32_t, std::shared_ptr<stream>> _streams;
+
+        void initialize_session();
+
+        void send_server_initial();
+
+        void send_session_data();
+
+        void recv_session_data();
+
+        void write_session_data();
+
+        nghttp2_ssize send_hook(ustring_view data);
+
+        void stream_close_hook();
+
+        int recv_frame_hook(int32_t stream_id);
+
+        int begin_headers_hook(int32_t stream_id);
+
+        int stream_recv_header(int32_t stream_id, req::headers hdr);
+
+        std::shared_ptr<stream> make_stream(int32_t stream_id);
 
       public:
+        const ip_address& local() const { return _path.local(); }
+        const ip_address& remote() const { return _path.remote(); }
+        const path& path() const { return _path; }
+
         template <concepts::nghttp2_session_type T>
         operator const T*() const
         {

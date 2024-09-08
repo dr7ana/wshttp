@@ -27,7 +27,6 @@ namespace wshttp
 
     class endpoint final
     {
-        friend class listener;
         friend class dns::server;
         friend class session;
 
@@ -74,7 +73,7 @@ namespace wshttp
                     throw std::invalid_argument{
                         "Cannot create tcp-listener at port {} -- listener already exists!"_format(port)};
 
-                itr->second = listener::make(*this, port, std::forward<Opt>(opts)...);
+                itr->second = make_listener(*this, port, std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"TCP listener construction is fucked"};
@@ -99,7 +98,7 @@ namespace wshttp
                     throw std::invalid_argument{
                         "Cannot create outbound node for href {} -- node already exists!"_format(parser->href_sv())};
 
-                itr->second = node::make(*this, std::forward<Opt>(opts)...);
+                itr->second = make_node(*this, std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"Node construction is fucked"};
@@ -150,6 +149,18 @@ namespace wshttp
         std::shared_ptr<T> make_shared(Args&&... args)
         {
             return _loop->template make_shared<T>(std::forward<Args>(args)...);
+        }
+
+        template <typename... Opt>
+        std::shared_ptr<listener> make_listener(endpoint& e, uint16_t _port, Opt&&... opts)
+        {
+            return make_shared<listener>(e, _port, std::forward<Opt>(opts)...);
+        }
+
+        template <typename... Opt>
+        std::shared_ptr<node> make_node(endpoint& e, Opt&&... opts)
+        {
+            return make_shared<listener>(e, std::forward<Opt>(opts)...);
         }
 
         bool in_event_loop() const { return _loop->in_event_loop(); }

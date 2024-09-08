@@ -40,7 +40,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(GNUInstallDirs)
 
 set(default_lto ON)
-if(WIN32 OR BUILD_STATIC_DEPS)
+if(WIN32 OR APPLE OR BUILD_STATIC_DEPS)
     set(default_lto OFF)
 endif()
 option(WITH_LTO "Compile with Link-time Optimization" ${default_lto})
@@ -72,7 +72,7 @@ target_include_directories(wshttp_internal INTERFACE include/wshttp)
 
 option(WARNINGS_AS_ERRORS "treat all warnings as errors. turn off for development, on for release" OFF)
 
-set(warning_flags -Wall -Wextra -Wno-unknown-pragmas -Wno-unused-function -Werror=vla -Wdeprecated-declarations)
+set(warning_flags -Wall -Wextra -Wno-unknown-pragmas -Wno-unused-function -Werror=vla -Wno-deprecated-declaration)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     list(APPEND warning_flags -Wno-unknown-warning-option)
 endif()
@@ -84,7 +84,7 @@ add_library(wshttp_internal_warnings INTERFACE)
 target_compile_options(wshttp_internal_warnings INTERFACE "$<$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:C>>:${warning_flags}>")
 target_link_libraries(wshttp_internal INTERFACE wshttp_internal_warnings)
 
-add_link_options(-lexplain)
+# add_link_options(-lexplain)
 
 add_subdirectory(external)
 add_subdirectory(src)

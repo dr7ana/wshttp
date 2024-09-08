@@ -40,3 +40,7 @@ target_link_libraries(
 )
 
 target_compile_features(wshttp INTERFACE cxx_std_20)
+
+if(APPLE)
+target_compile_definitions(wshttp PUBLIC __APPLE_USE_RFC_3542)
+endif()

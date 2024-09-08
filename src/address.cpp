@@ -96,4 +96,9 @@ namespace wshttp
 
         enc::big_to_host_inplace(_port);
     }
+
+    std::string path::to_string() const 
+    { 
+        return "[local={}, remote={}]"_format(_local, _remote); 
+    }
 }  //  namespace wshttp

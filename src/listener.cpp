@@ -6,11 +6,6 @@
 
 namespace wshttp
 {
-    void listen_callbacks::event_cb(struct bufferevent * /* bev */, short /* events */, void * /* user_arg*/)
-    {
-        //
-    }
-
     void listen_callbacks::accept_cb(
         struct evconnlistener * /* evconn */,
         evutil_socket_t fd,
@@ -18,10 +13,10 @@ namespace wshttp
         int /* addrlen */,
         void *user_arg)
     {
-        ip_address remote{addr};
-
         auto &l = *static_cast<listener *>(user_arg);
         log->info("Inbound connection established!");
+
+        ip_address remote{addr};
 
         l.create_inbound_session(std::move(remote), fd);
     }
