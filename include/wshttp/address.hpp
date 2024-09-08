@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils.hpp"
+#include "types.hpp"
 
 #include <variant>
 
@@ -29,15 +29,26 @@ namespace wshttp
       public:
         std::array<const char*, URI_FIELDS> _fields{};
 
-        static uri parse(std::string uri);
+        template <concepts::string_view_compatible T>
+        static uri parse(T u)
+        {
+            return uri::parse(std::string{reinterpret_cast<const char*>(u.data()), u.size()});
+        }
 
-        constexpr std::string_view scheme() { return _fields[_scheme]; }
-        constexpr std::string_view userinfo() { return _fields[_userinfo]; }
-        constexpr std::string_view host() { return _fields[_host]; }
-        constexpr std::string_view port() { return _fields[_port]; }
-        constexpr std::string_view path() { return _fields[_pathname]; }
-        constexpr std::string_view query() { return _fields[_query]; }
-        constexpr std::string_view fragment() { return _fields[_fragment]; }
+        static uri parse(std::string u);
+
+        std::string_view scheme() { return _fields[_scheme]; }
+        std::string_view userinfo() { return _fields[_userinfo]; }
+        std::string_view host() { return _fields[_host]; }
+        std::string_view port() { return _fields[_port]; }
+        std::string_view path() { return _fields[_pathname]; }
+        std::string_view query() { return _fields[_query]; }
+        std::string_view fragment() { return _fields[_fragment]; }
+
+        explicit operator bool() const { return !_fields.empty(); }
+
+        auto operator<=>(const uri& u) { return _fields <=> u._fields; }
+        bool operator==(const uri& u) { return (*this <=> u) == 0; }
     };
 
     struct ipv4

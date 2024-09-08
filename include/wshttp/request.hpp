@@ -19,8 +19,16 @@ namespace wshttp
         {
             std::vector<nghttp2_nv> _hdrs;
 
+          private:
+            size_t _index{};
+
+          public:
             headers(ustring_view name, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
             headers(FIELD f, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
+
+            std::pair<ustring_view, ustring_view> current();
+            std::pair<ustring_view, ustring_view> next();
+            bool end() const { return _index == _hdrs.size() - 1; }
 
             void add_field(FIELD f, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
 

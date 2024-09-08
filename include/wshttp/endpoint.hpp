@@ -27,8 +27,9 @@ namespace wshttp
 
     class endpoint final
     {
-        friend class dns::server;
         friend class session;
+        friend class listener;
+        friend class dns::server;
 
       public:
         endpoint();
@@ -160,7 +161,7 @@ namespace wshttp
         template <typename... Opt>
         std::shared_ptr<node> make_node(endpoint& e, Opt&&... opts)
         {
-            return make_shared<listener>(e, std::forward<Opt>(opts)...);
+            return make_shared<node>(e, std::forward<Opt>(opts)...);
         }
 
         bool in_event_loop() const { return _loop->in_event_loop(); }

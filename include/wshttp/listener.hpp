@@ -11,9 +11,9 @@ namespace wshttp
 
     class listener
     {
-        friend class endpoint;
-        friend struct listener_callbacks;
         friend class session;
+        friend class event_loop;
+        friend struct listener_callbacks;
 
         template <typename... Opt>
         explicit listener(endpoint& e, uint16_t p, Opt&&... opts) : _ep{e}, _port{p}
@@ -28,9 +28,9 @@ namespace wshttp
         ~listener() = default;
 
         template <typename... Opt>
-        static std::shared_ptr<listener> make(endpoint& e, uint16_t _port, Opt&&... opts)
+        static std::shared_ptr<listener> make(endpoint& e, uint16_t p, Opt&&... opts)
         {
-            return std::shared_ptr<listener>{new listener{e, _port, std::forward<Opt>(opts)...}};
+            return std::shared_ptr<listener>{new listener{e, p, std::forward<Opt>(opts)...}};
         }
 
       private:

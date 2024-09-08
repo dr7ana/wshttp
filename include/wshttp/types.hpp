@@ -9,7 +9,7 @@ namespace wshttp
     namespace defaults
     {
         inline constexpr uint16_t DNS_PORT{4400};
-        
+
         inline constexpr auto ALPN = "h2"_usv;
 
     }  // namespace defaults
@@ -69,6 +69,11 @@ namespace wshttp
 
     namespace concepts
     {
+        template <typename T>
+        concept string_view_compatible =
+            std::convertible_to<T, std::string_view> || std::convertible_to<T, std::basic_string_view<unsigned char>>
+            || std::convertible_to<T, std::basic_string_view<std::byte>>;
+
         template <typename T>
         concept endian_swappable_type =
             std::integral<T> && (sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8);

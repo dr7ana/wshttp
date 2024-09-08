@@ -15,10 +15,7 @@ namespace wshttp
     {
         auto &l = *static_cast<listener *>(user_arg);
         log->info("Inbound connection established!");
-
-        ip_address remote{addr};
-
-        l.create_inbound_session(std::move(remote), fd);
+        l.create_inbound_session(ip_address{addr}, fd);
     }
 
     void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)

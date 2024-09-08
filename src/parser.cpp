@@ -46,6 +46,7 @@ namespace wshttp
             return false;
         }
 
+        log->debug("Successfully parsed input...");
         return true;
     }
 

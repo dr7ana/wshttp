@@ -4,13 +4,12 @@
 
 namespace wshttp
 {
-    stream::stream(session& s, int32_t id) : _s{s}, _id{id}
-    {}
+    stream::stream(session& s, int32_t id) : _s{s}, _id{id} {}
 
     int stream::recv_header(req::headers hdr)
     {
-        (void)hdr;
-        return {};
+        _req = uri::parse(hdr.current().second);
+        return _req ? 0 : -1;
     }
 
     int stream::recv_request()

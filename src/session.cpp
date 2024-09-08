@@ -9,16 +9,16 @@ namespace wshttp
 {
     static constexpr auto OUTPUT_BLOCK_THRESHOLD{1 << 16};
 
-    void session_callbacks::event_cb(struct bufferevent */* bev */, short events, void *user_arg)
+    void session_callbacks::event_cb(struct bufferevent * /* bev */, short events, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = *static_cast<session *>(user_arg);
+        auto &s = *static_cast<session *>(user_arg);
 
         auto msg = "Inbound session (path: {})"_format(s.path());
 
         if (events & BEV_EVENT_CONNECTED)
         {
-            const unsigned char* alpn = nullptr;
+            const unsigned char *alpn = nullptr;
             unsigned int alpn_len = 0;
 
             SSL_get0_alpn_selected(s._ssl.get(), &alpn, &alpn_len);
@@ -36,68 +36,56 @@ namespace wshttp
             }
         }
         else if (events & BEV_EVENT_EOF)
-        {
             log->warn("{} EOF!", msg);
-        }
         else if (events & BEV_EVENT_ERROR)
-        {
             log->warn("{} network error!", msg);
-        }
         else if (events & BEV_EVENT_TIMEOUT)
-        {
             log->warn("{} timed out!", msg);
-        }
 
         // TODO: close the connection
     }
-    
-    void session_callbacks::read_cb(struct bufferevent */* bev */, void *user_arg)
+
+    void session_callbacks::read_cb(struct bufferevent * /* bev */, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = *static_cast<session *>(user_arg);
+        auto &s = *static_cast<session *>(user_arg);
         s.recv_session_data();
     }
 
-    void session_callbacks::write_cb(struct bufferevent */* bev */, void *user_arg)
+    void session_callbacks::write_cb(struct bufferevent * /* bev */, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = *static_cast<session *>(user_arg);
+        auto &s = *static_cast<session *>(user_arg);
         s.recv_session_data();
     }
 
-    nghttp2_ssize session_callbacks::send_callback(nghttp2_session */* session */,
-                                const uint8_t *data, size_t length,
-                                int /* flags */, void *user_arg)
+    nghttp2_ssize session_callbacks::send_callback(
+        nghttp2_session * /* session */, const uint8_t *data, size_t length, int /* flags */, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = *static_cast<session *>(user_arg);
+        auto &s = *static_cast<session *>(user_arg);
         return s.send_hook(ustring_view{data, length});
     }
 
-    int session_callbacks::on_frame_recv_callback(nghttp2_session */* session */,
-                                const nghttp2_frame *frame, void *user_arg)
+    int session_callbacks::on_frame_recv_callback(
+        nghttp2_session * /* session */, const nghttp2_frame *frame, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = *static_cast<session *>(user_arg);
+        auto &s = *static_cast<session *>(user_arg);
 
-        switch (frame->hd.type)
+        if (frame->hd.type == NGHTTP2_DATA || frame->hd.type == NGHTTP2_HEADERS)
         {
-            case NGHTTP2_DATA:
-            case NGHTTP2_HEADERS:
-                return s.recv_frame_hook(frame->hd.stream_id);  // TODO:
-                break;
-            default:
-                break;
+            return s.recv_frame_hook(frame->hd.stream_id);  // TODO:
         }
 
         return 0;
     }
 
-    int session_callbacks::on_stream_close_callback(nghttp2_session */* session */, int32_t stream_id,
-                                uint32_t error_code, void *user_arg)
+    int session_callbacks::on_stream_close_callback(
+        nghttp2_session * /* session */, int32_t stream_id, uint32_t error_code, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = *static_cast<session *>(user_arg);
+        auto &s = *static_cast<session *>(user_arg);
         (void)s;
         (void)stream_id;
         (void)error_code;
@@ -105,33 +93,38 @@ namespace wshttp
     }
 
     // called when nghttp2 emits single header name/value pair
-    int session_callbacks::on_header_callback(nghttp2_session */* session */,
-                            const nghttp2_frame *frame, const uint8_t *name,
-                            size_t /* namelen */, const uint8_t *value,
-                            size_t valuelen, uint8_t /* flags */, void *user_arg)
+    int session_callbacks::on_header_callback(
+        nghttp2_session * /* session */,
+        const nghttp2_frame *frame,
+        const uint8_t *name,
+        size_t /* namelen */,
+        const uint8_t *value,
+        size_t valuelen,
+        uint8_t /* flags */,
+        void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = *static_cast<session *>(user_arg);
+        auto &s = *static_cast<session *>(user_arg);
 
         if (frame->hd.type == NGHTTP2_HEADERS and frame->headers.cat == NGHTTP2_HCAT_REQUEST)
         {
             if (req::fields::path.compare(name) == 0)
             {
-                return s.stream_recv_header(frame->hd.stream_id, req::headers{req::FIELD::path, ustring_view{value, valuelen}});
+                return s.stream_recv_header(
+                    frame->hd.stream_id, req::headers{req::FIELD::path, ustring_view{value, valuelen}});
             }
         }
 
         return 0;
     }
 
-    int session_callbacks::on_begin_headers_callback(nghttp2_session */* session */,
-                                    const nghttp2_frame *frame,
-                                    void *user_arg)
+    int session_callbacks::on_begin_headers_callback(
+        nghttp2_session * /* session */, const nghttp2_frame *frame, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = *static_cast<session *>(user_arg);
+        auto &s = *static_cast<session *>(user_arg);
 
-        if (frame->hd.type != NGHTTP2_HEADERS || frame->headers.cat != NGHTTP2_HCAT_REQUEST) 
+        if (frame->hd.type != NGHTTP2_HEADERS || frame->headers.cat != NGHTTP2_HCAT_REQUEST)
         {
             log->debug("Ignoring non-header and non-hcat-req frames...");
             return 0;
@@ -140,12 +133,12 @@ namespace wshttp
         return s.begin_headers_hook(frame->hd.stream_id);
     }
 
-    std::shared_ptr<session> session::make(listener& l, ip_address remote, evutil_socket_t fd)
+    std::shared_ptr<session> session::make(listener &l, ip_address remote, evutil_socket_t fd)
     {
         return l._ep.template make_shared<session>(l, std::move(remote), fd);
     }
 
-    session::session(listener& l, ip_address remote, evutil_socket_t fd) : _ep{l._ep}, _fd{fd}
+    session::session(listener &l, ip_address remote, evutil_socket_t fd) : _ep{l._ep}, _fd{fd}
     {
         _ssl.reset(SSL_new(l._ctx->ctx().get()));
 
@@ -174,28 +167,26 @@ namespace wshttp
 
         _path = {std::move(remote), ip_address{&_laddr}};
 
-        bufferevent_setcb(_bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
+        bufferevent_setcb(
+            _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
 
         log->info("Successfully configured inbound session; path: {}", _path);
     }
 
     void session::initialize_session()
     {
-        nghttp2_session* _sess;
-        nghttp2_session_callbacks* callbacks;
+        nghttp2_session *_sess;
+        nghttp2_session_callbacks *callbacks;
 
         nghttp2_session_callbacks_new(&callbacks);
-                
+
         nghttp2_session_callbacks_set_send_callback2(callbacks, session_callbacks::send_callback);
 
-        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks,
-                                                            session_callbacks::on_frame_recv_callback);
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, session_callbacks::on_frame_recv_callback);
 
-        nghttp2_session_callbacks_set_on_stream_close_callback(
-            callbacks, session_callbacks::on_stream_close_callback);
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, session_callbacks::on_stream_close_callback);
 
-        nghttp2_session_callbacks_set_on_header_callback(callbacks,
-                                                       session_callbacks:: on_header_callback);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
 
         nghttp2_session_callbacks_set_on_begin_headers_callback(
             callbacks, session_callbacks::on_begin_headers_callback);
@@ -246,8 +237,8 @@ namespace wshttp
     void session::write_session_data()
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-                
-        if (evbuffer_get_length(bufferevent_get_output(_bev.get())) > 0) 
+
+        if (evbuffer_get_length(bufferevent_get_output(_bev.get())) > 0)
         {
             // TODO:
             log->info("Figure out why nghttp2 returns here!");
@@ -263,7 +254,6 @@ namespace wshttp
         send_session_data();
     }
 
-
     nghttp2_ssize session::send_hook(ustring_view data)
     {
         if (auto outlen = evbuffer_get_length(bufferevent_get_output(_bev.get())); outlen >= OUTPUT_BLOCK_THRESHOLD)
@@ -275,16 +265,15 @@ namespace wshttp
         return data.size();
     }
 
-    void session::stream_close_hook()
-    {}
+    void session::stream_close_hook() {}
 
     int session::recv_frame_hook(int32_t stream_id)
     {
-        auto* stream_data = nghttp2_session_get_stream_user_data(_session.get(), stream_id);
+        auto *str = static_cast<stream *>(nghttp2_session_get_stream_user_data(_session.get(), stream_id));
 
-        if (not stream_data)
+        if (not str)
         {
-            // nghttp2 says DATA and HEADERS frames can invoke this cb after on_stream_close
+            log->warn("Stream object could not be fetched from nghttp2 stream data!");
             return 0;
         }
 
@@ -308,7 +297,7 @@ namespace wshttp
         if (not itr->second)
             throw std::runtime_error{"Failed to construct stream (id: {})"_format(stream_id)};
 
-        nghttp2_session_set_stream_user_data(_session.get(), stream_id, &itr->second);
+        nghttp2_session_set_stream_user_data(_session.get(), stream_id, itr->second.get());
 
         return 0;
     }

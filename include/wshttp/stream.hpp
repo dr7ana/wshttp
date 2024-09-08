@@ -1,7 +1,8 @@
 #pragma once
 
-#include "utils.hpp"
+#include "address.hpp"
 #include "request.hpp"
+#include "utils.hpp"
 
 namespace wshttp
 {
@@ -9,6 +10,7 @@ namespace wshttp
 
     class stream
     {
+        friend class event_loop;
         friend class session;
 
         stream(session& s, int32_t id = 0);
@@ -20,14 +22,13 @@ namespace wshttp
         stream& operator=(stream&&) = delete;
 
       public:
-
         ~stream() = default;
 
       private:
         session& _s;
-        std::vector<char> _uri;
         int32_t _id;
-        int _fd;
+        int _fd{-1};
+        uri _req;
 
         int recv_header(req::headers hdr);
 

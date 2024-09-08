@@ -21,9 +21,14 @@ namespace wshttp::req
         }
     }
 
-    static nghttp2_nv make_pair(const uint8_t* name, size_t namelen, const uint8_t* value, size_t valuelen, nghttp2_nv_flag flags)
+    static nghttp2_nv make_pair(
+        const uint8_t* name, size_t namelen, const uint8_t* value, size_t valuelen, nghttp2_nv_flag flags)
     {
-        return nghttp2_nv{const_cast<uint8_t*>(name), const_cast<uint8_t*>(value), namelen, valuelen, 
+        return nghttp2_nv{
+            const_cast<uint8_t*>(name),
+            const_cast<uint8_t*>(value),
+            namelen,
+            valuelen,
             static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
     }
 
@@ -50,6 +55,19 @@ namespace wshttp::req
     headers::headers(FIELD f, ustring_view val, nghttp2_nv_flag flags)
     {
         add_field(f, val, flags);
+    }
+
+    std::pair<ustring_view, ustring_view> headers::current()
+    {
+        auto& h = _hdrs[_index];
+        return {{h.name, h.namelen}, {h.value, h.valuelen}};
+    }
+
+    std::pair<ustring_view, ustring_view> headers::next()
+    {
+        _index += 1;
+        _index %= _hdrs.size();
+        return current();
     }
 
     void headers::add_field(FIELD f, ustring_view val, nghttp2_nv_flag flags)
