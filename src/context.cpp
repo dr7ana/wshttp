@@ -19,6 +19,7 @@ namespace wshttp
 
     void app_context::handle_io_opt(std::shared_ptr<ssl_creds> c)
     {
+        log->debug("app_context emplacing ssl creds...");
         _creds = std::move(c);
     }
 
@@ -27,8 +28,10 @@ namespace wshttp
         switch (_dir)
         {
             case IO::INBOUND:
+                log->info("Creating inbound context...");
                 return _init_outbound(_creds->_keyfile.c_str(), _creds->_certfile.c_str());
             case IO::OUTBOUND:
+                log->info("Creating outbound context...");
                 return _init_inbound(_creds->_keyfile.c_str(), _creds->_certfile.c_str());
         }
     }
@@ -36,6 +39,7 @@ namespace wshttp
     void app_context::_init_inbound(const char *_keyfile, const char *_certfile)
     {
         auto ssl = SSL_CTX_new(TLS_server_method());
+
         if (not ssl)
             throw std::runtime_error{
                 "Failed to create SSL Context: {}"_format(ERR_error_string(ERR_get_error(), NULL))};

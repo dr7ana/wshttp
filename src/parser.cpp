@@ -46,8 +46,14 @@ namespace wshttp
             return false;
         }
 
-        log->debug("Successfully parsed input...");
-        return true;
+        if (_url()->validate())
+        {
+            log->debug("Successfully parsed input...");
+            return true;
+        }
+
+        log->error("Invalid url input: {}", *_data);
+        return false;
     }
 
     bool url_parser::read(std::string input)

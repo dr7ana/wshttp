@@ -37,15 +37,19 @@ namespace wshttp
 
         static uri parse(std::string u);
 
-        std::string_view scheme() { return _fields[_scheme]; }
-        std::string_view userinfo() { return _fields[_userinfo]; }
-        std::string_view host() { return _fields[_host]; }
-        std::string_view port() { return _fields[_port]; }
-        std::string_view path() { return _fields[_pathname]; }
-        std::string_view query() { return _fields[_query]; }
-        std::string_view fragment() { return _fields[_fragment]; }
+        std::string_view scheme() const { return _fields[_scheme]; }
+        std::string_view userinfo() const { return _fields[_userinfo]; }
+        std::string_view host() const { return _fields[_host]; }
+        std::string_view port() const { return _fields[_port]; }
+        std::string_view path() const { return _fields[_pathname]; }
+        std::string_view query() const { return _fields[_query]; }
+        std::string_view fragment() const { return _fields[_fragment]; }
 
-        explicit operator bool() const { return !_fields.empty(); }
+        void print_contents() const;
+
+        bool empty() const { return _fields.empty(); }
+
+        explicit operator bool() const { return !empty(); }
 
         auto operator<=>(const uri& u) { return _fields <=> u._fields; }
         bool operator==(const uri& u) { return (*this <=> u) == 0; }
@@ -184,11 +188,9 @@ namespace wshttp
             return *this;
         }
 
-      private:
         ip_address _local;
         ip_address _remote;
 
-      public:
         ip_address local() { return _local; }
         const ip_address& local() const { return _local; }
         ip_address remote() { return _remote; }

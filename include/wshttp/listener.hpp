@@ -25,13 +25,7 @@ namespace wshttp
       public:
         listener() = delete;
 
-        ~listener() = default;
-
-        template <typename... Opt>
-        static std::shared_ptr<listener> make(endpoint& e, uint16_t p, Opt&&... opts)
-        {
-            return std::shared_ptr<listener>{new listener{e, p, std::forward<Opt>(opts)...}};
-        }
+        ~listener();
 
       private:
         endpoint& _ep;
@@ -47,5 +41,7 @@ namespace wshttp
 
       public:
         void create_inbound_session(ip_address remote, evutil_socket_t fd);
+
+        void close_all();
     };
 }  //  namespace wshttp

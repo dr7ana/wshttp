@@ -71,60 +71,63 @@ namespace wshttp
 
         void server::initialize()
         {
-            sockaddr_in _bind;
+            return _ep.call_get([&]() {
+                sockaddr_in _bind;
 
-            _udp_sock = socket(PF_INET, SOCK_DGRAM, 0);
+                _udp_sock = socket(PF_INET, SOCK_DGRAM, 0);
 
-            if (_udp_sock < 0)
-                throw std::runtime_error{"UDP socket is fucked"};
+                if (_udp_sock < 0)
+                    throw std::runtime_error{"UDP socket is fucked"};
 
-            if (auto rv = evutil_make_socket_nonblocking(_udp_sock); rv < 0)
-                throw std::runtime_error{"Failed to non-block UDP socket"};
+                if (auto rv = evutil_make_socket_nonblocking(_udp_sock); rv < 0)
+                    throw std::runtime_error{"Failed to non-block UDP socket: {}"_format(strerror(errno))};
 
-            _bind.sin_family = AF_INET;
-            _bind.sin_addr.s_addr = INADDR_ANY;
-            _bind.sin_port = enc::host_to_big(defaults::DNS_PORT);
+                _bind.sin_family = AF_INET;
+                _bind.sin_addr.s_addr = INADDR_ANY;
+                _bind.sin_port = enc::host_to_big(defaults::DNS_PORT);
 
-            if (auto rv = bind(_udp_sock, reinterpret_cast<sockaddr*>(&_bind), sizeof(sockaddr)); rv < 0)
-                throw std::runtime_error{"DNS server failed to bind UDP port!"};
+                if (auto rv = bind(_udp_sock, reinterpret_cast<sockaddr*>(&_bind), sizeof(sockaddr)); rv < 0)
+                    throw std::runtime_error{"DNS server failed to bind UDP port: {}"_format(strerror(errno))};
 
-            _udp_bind = _ep.template shared_ptr<evdns_server_port>(
-                evdns_add_server_port_with_base(_ep._loop->loop().get(), _udp_sock, 0, dns_callbacks::server_cb, this),
-                deleters::evdns_port_d);
+                _udp_bind = _ep.template shared_ptr<evdns_server_port>(
+                    evdns_add_server_port_with_base(
+                        _ep._loop->loop().get(), _udp_sock, 0, dns_callbacks::server_cb, this),
+                    deleters::evdns_port_d);
 
-            if (not _udp_bind)
-                throw std::runtime_error{"DNS server failed to add UDP port!"};
+                if (not _udp_bind)
+                    throw std::runtime_error{"DNS server failed to add UDP port: {}"_format(strerror(errno))};
 
-            log->debug("DNS server successfully configured UDP socket!");
+                log->debug("DNS server successfully configured UDP socket!");
 
-            _tcp_listener = _ep.template shared_ptr<struct evconnlistener>(
-                evconnlistener_new_bind(
-                    _ep._loop->loop().get(),
-                    nullptr,
-                    nullptr,
-                    LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE,
-                    -1,
-                    reinterpret_cast<sockaddr*>(&_bind),
-                    sizeof(sockaddr)),
-                deleters::evconnlistener_d);
+                _tcp_listener = _ep.template shared_ptr<struct evconnlistener>(
+                    evconnlistener_new_bind(
+                        _ep._loop->loop().get(),
+                        nullptr,
+                        nullptr,
+                        LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE,
+                        -1,
+                        reinterpret_cast<sockaddr*>(&_bind),
+                        sizeof(sockaddr)),
+                    deleters::evconnlistener_d);
 
-            if (not _tcp_listener)
-            {
-                auto err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-                throw std::runtime_error{"TCP listener construction is fucked: {}"_format(err)};
-            }
+                if (not _tcp_listener)
+                {
+                    auto err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
+                    throw std::runtime_error{"TCP listener construction is fucked: {}"_format(err)};
+                }
 
-            // we don't need to hold on to this one since we pass LEV_OPT_CLOSE_ON_FREE in creating the
-            // evconnlistener, which closes the underlying socket when the listener is freed
-            auto* _tcp_bind = evdns_add_server_port_with_listener(
-                _ep._loop->loop().get(), _tcp_listener.get(), 0, dns_callbacks::server_cb, this);
+                // we don't need to hold on to this one since we pass LEV_OPT_CLOSE_ON_FREE in creating the
+                // evconnlistener, which closes the underlying socket when the listener is freed
+                auto* _tcp_bind = evdns_add_server_port_with_listener(
+                    _ep._loop->loop().get(), _tcp_listener.get(), 0, dns_callbacks::server_cb, this);
 
-            if (not _tcp_bind)
-                throw std::runtime_error{"DNS server failed to bind server TCP port!"};
+                if (not _tcp_bind)
+                    throw std::runtime_error{"DNS server failed to bind server TCP port!"};
 
-            log->debug("DNS server successfully configured TCP socket!");
+                log->debug("DNS server successfully configured TCP socket!");
 
-            register_nameserver(defaults::DNS_PORT);
+                register_nameserver(defaults::DNS_PORT);
+            });
         }
 
         void server::register_nameserver(uint16_t port)

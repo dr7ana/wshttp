@@ -12,6 +12,7 @@ namespace wshttp
 
     class session
     {
+        friend class stream;
         friend class listener;
         friend struct session_callbacks;
 
@@ -31,7 +32,7 @@ namespace wshttp
         static std::shared_ptr<session> make(listener& l, ip_address remote, evutil_socket_t fd);
 
       private:
-        endpoint& _ep;
+        listener& _list;
 
         evutil_socket_t _fd;
 
@@ -42,6 +43,10 @@ namespace wshttp
 
         session_ptr _session;
         std::unordered_map<uint32_t, std::shared_ptr<stream>> _streams;
+
+        void _init_internals();
+
+        void config_send_initial();
 
         void initialize_session();
 
@@ -55,7 +60,7 @@ namespace wshttp
 
         nghttp2_ssize send_hook(ustring_view data);
 
-        void stream_close_hook();
+        int stream_close_hook(int32_t stream_id, uint32_t error_code = 0);
 
         int recv_frame_hook(int32_t stream_id);
 

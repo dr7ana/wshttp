@@ -4,20 +4,31 @@
 
 namespace wshttp::req
 {
-    constexpr ustring_view field(req::FIELD f)
+    constexpr ustring_view field(FIELD f)
     {
         switch (f)
         {
-            case req::FIELD::method:
+            case FIELD::method:
                 return fields::method;
-            case req::FIELD::scheme:
+            case FIELD::scheme:
                 return fields::scheme;
-            case req::FIELD::authority:
+            case FIELD::authority:
                 return fields::authority;
-            case req::FIELD::path:
+            case FIELD::path:
                 return fields::path;
-            case req::FIELD::status:
+            case FIELD::status:
                 return fields::status;
+        }
+    }
+
+    constexpr auto _status(STATUS s)
+    {
+        switch (s)
+        {
+            case STATUS::_200:
+                return status::HTTP_200;
+            case STATUS::_404:
+                return status::HTTP_404;
         }
     }
 
@@ -32,7 +43,7 @@ namespace wshttp::req
             static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
     }
 
-    static nghttp2_nv make_header(req::FIELD f, ustring_view& v, nghttp2_nv_flag flags)
+    static nghttp2_nv make_header(FIELD f, ustring_view& v, nghttp2_nv_flag flags)
     {
         return nghttp2_nv{
             const_cast<uint8_t*>(field(f).data()),
@@ -55,6 +66,11 @@ namespace wshttp::req
     headers::headers(FIELD f, ustring_view val, nghttp2_nv_flag flags)
     {
         add_field(f, val, flags);
+    }
+
+    headers headers::make_status(STATUS s)
+    {
+        return headers{fields::status, _status(s)};
     }
 
     std::pair<ustring_view, ustring_view> headers::current()

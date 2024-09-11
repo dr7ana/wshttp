@@ -155,13 +155,13 @@ namespace wshttp
         template <typename... Opt>
         std::shared_ptr<listener> make_listener(endpoint& e, uint16_t _port, Opt&&... opts)
         {
-            return make_shared<listener>(e, _port, std::forward<Opt>(opts)...);
+            return _loop->template make_shared<listener>(e, _port, std::forward<Opt>(opts)...);
         }
 
         template <typename... Opt>
         std::shared_ptr<node> make_node(endpoint& e, Opt&&... opts)
         {
-            return make_shared<node>(e, std::forward<Opt>(opts)...);
+            return _loop->template make_shared<node>(e, std::forward<Opt>(opts)...);
         }
 
         bool in_event_loop() const { return _loop->in_event_loop(); }

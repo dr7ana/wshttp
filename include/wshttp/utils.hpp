@@ -24,6 +24,7 @@ extern "C"
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <queue>

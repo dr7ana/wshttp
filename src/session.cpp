@@ -9,6 +9,11 @@ namespace wshttp
 {
     static constexpr auto OUTPUT_BLOCK_THRESHOLD{1 << 16};
 
+    static wshttp::stream *_get_stream(struct nghttp2_session *s, int32_t id)
+    {
+        return static_cast<wshttp::stream *>(nghttp2_session_get_stream_user_data(s, id));
+    }
+
     void session_callbacks::event_cb(struct bufferevent * /* bev */, short events, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
@@ -22,7 +27,7 @@ namespace wshttp
             unsigned int alpn_len = 0;
 
             SSL_get0_alpn_selected(s._ssl.get(), &alpn, &alpn_len);
-            if (not alpn || alpn_len != 2 || alpn != defaults::ALPN)
+            if (not alpn or alpn_len != 2 or alpn != defaults::ALPN)
             {
                 log->warn("{} failed to negotiate 'h2' alpn!", msg);
             }
@@ -30,9 +35,7 @@ namespace wshttp
             {
                 log->info("{} successfully negotiated 'h2' alpn, initializing...", msg);
                 // initialize session
-                s.initialize_session();
-                s.send_server_initial();
-                s.send_session_data();
+                return s.config_send_initial();
             }
         }
         else if (events & BEV_EVENT_EOF)
@@ -67,16 +70,34 @@ namespace wshttp
         return s.send_hook(ustring_view{data, length});
     }
 
-    int session_callbacks::on_frame_recv_callback(
-        nghttp2_session * /* session */, const nghttp2_frame *frame, void *user_arg)
+    int session_callbacks::on_frame_recv_callback(nghttp2_session *s, const nghttp2_frame *frame, void * /* user_arg */)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto &s = *static_cast<session *>(user_arg);
+        auto &stream_id = frame->hd.stream_id;
 
-        if (frame->hd.type == NGHTTP2_DATA || frame->hd.type == NGHTTP2_HEADERS)
+        switch (frame->hd.type)
         {
-            return s.recv_frame_hook(frame->hd.stream_id);  // TODO:
+            case NGHTTP2_DATA:
+            case NGHTTP2_HEADERS:
+                if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM)
+                {
+                    auto *str = _get_stream(s, stream_id);
+
+                    if (not str)
+                    {
+                        log->critical("Could not find stream of id:{} to process incoming frame!", stream_id);
+                        return NGHTTP2_ERR_CALLBACK_FAILURE;
+                    }
+
+                    return str->recv_request();
+                }
+
+                break;
+            default:
+                break;
         }
+
+        log->debug("Received nghttp2_frame_type value: {}", static_cast<int>(frame->hd.type));
 
         return 0;
     }
@@ -86,33 +107,36 @@ namespace wshttp
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
         auto &s = *static_cast<session *>(user_arg);
-        (void)s;
-        (void)stream_id;
-        (void)error_code;
-        return 0;
+
+        return s.stream_close_hook(stream_id, error_code);
     }
 
     // called when nghttp2 emits single header name/value pair
     int session_callbacks::on_header_callback(
-        nghttp2_session * /* session */,
+        nghttp2_session *s,
         const nghttp2_frame *frame,
         const uint8_t *name,
         size_t /* namelen */,
         const uint8_t *value,
         size_t valuelen,
         uint8_t /* flags */,
-        void *user_arg)
+        void * /* user_arg */)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        auto &s = *static_cast<session *>(user_arg);
+        auto &stream_id = frame->hd.stream_id;
 
-        if (frame->hd.type == NGHTTP2_HEADERS and frame->headers.cat == NGHTTP2_HCAT_REQUEST)
+        if (frame->hd.type == NGHTTP2_HEADERS and frame->headers.cat == NGHTTP2_HCAT_REQUEST
+            and not req::fields::path.compare(name))
         {
-            if (req::fields::path.compare(name) == 0)
+            auto *str = _get_stream(s, stream_id);
+
+            if (not str)
             {
-                return s.stream_recv_header(
-                    frame->hd.stream_id, req::headers{req::FIELD::path, ustring_view{value, valuelen}});
+                log->critical("Could not find stream of id:{} to process incoming header!", stream_id);
+                return NGHTTP2_ERR_CALLBACK_FAILURE;
             }
+
+            return str->recv_header(req::headers{req::FIELD::path, ustring_view{value, valuelen}});
         }
 
         return 0;
@@ -124,7 +148,7 @@ namespace wshttp
         log->debug("{} called", __PRETTY_FUNCTION__);
         auto &s = *static_cast<session *>(user_arg);
 
-        if (frame->hd.type != NGHTTP2_HEADERS || frame->headers.cat != NGHTTP2_HCAT_REQUEST)
+        if (frame->hd.type != NGHTTP2_HEADERS or frame->headers.cat != NGHTTP2_HCAT_REQUEST)
         {
             log->debug("Ignoring non-header and non-hcat-req frames...");
             return 0;
@@ -138,39 +162,59 @@ namespace wshttp
         return l._ep.template make_shared<session>(l, std::move(remote), fd);
     }
 
-    session::session(listener &l, ip_address remote, evutil_socket_t fd) : _ep{l._ep}, _fd{fd}
+    session::session(listener &l, ip_address remote, evutil_socket_t fd)
+        : _list{l}, _fd{fd}, _path{{}, std::move(remote)}
     {
-        _ssl.reset(SSL_new(l._ctx->ctx().get()));
+        _init_internals();
+    }
 
-        if (not _ssl)
-            throw std::runtime_error{
-                "Failed to create SSL/TLS for inbound: {}"_format(ERR_error_string(ERR_get_error(), NULL))};
+    void session::_init_internals()
+    {
+        _list._ep.call([this]() mutable {
+            SSL *s;
+            s = SSL_new(_list._ctx->ctx().get());
 
-        _bev.reset(bufferevent_openssl_socket_new(
-            _ep._loop->loop().get(),
-            _fd,
-            _ssl.get(),
-            BUFFEREVENT_SSL_ACCEPTING,
-            BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
+            if (not s)
+                throw std::runtime_error{"Failed to create SSL/TLS for inbound: {}"_format(strerror(errno))};
 
-        if (not _bev)
-            throw std::runtime_error{"Failed to create bufferevent socket for inbound TLS session: {}"_format(
-                ERR_error_string(ERR_get_error(), NULL))};
+            _ssl.reset(s);
 
-        bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
+            _bev.reset(bufferevent_openssl_socket_new(
+                _list._ep._loop->loop().get(),
+                _fd,
+                _ssl.get(),
+                BUFFEREVENT_SSL_ACCEPTING,
+                BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
 
-        sockaddr _laddr{};
-        socklen_t len;
+            if (not _bev)
+                throw std::runtime_error{"Failed to create bufferevent socket for inbound TLS session: {}"_format(
+                    ERR_error_string(ERR_get_error(), NULL))};
 
-        if (getsockname(_fd, &_laddr, &len) < 0)
-            throw std::runtime_error{"Failed to get local socket address for incoming (remote: {})"_format(remote)};
+            bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
-        _path = {std::move(remote), ip_address{&_laddr}};
+            sockaddr _laddr{};
+            socklen_t len;
 
-        bufferevent_setcb(
-            _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
+            if (getsockname(_fd, &_laddr, &len) < 0)
+                throw std::runtime_error{
+                    "Failed to get local socket address for incoming (remote: {})"_format(_path.remote())};
 
-        log->info("Successfully configured inbound session; path: {}", _path);
+            _path._local = ip_address{&_laddr};
+
+            bufferevent_setcb(
+                _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
+
+            log->info("Successfully configured inbound session; path: {}", _path);
+        });
+    }
+
+    void session::config_send_initial()
+    {
+        return _list._ep.call_get([this]() {
+            initialize_session();
+            send_server_initial();
+            send_session_data();
+        });
     }
 
     void session::initialize_session()
@@ -194,7 +238,7 @@ namespace wshttp
         if (nghttp2_session_server_new(&_sess, callbacks, this) != 0)
             throw std::runtime_error{"Failed to initialize inbound session!"};
 
-        _session.reset(_sess);
+        _session = std::shared_ptr<::nghttp2_session>(_sess, deleters::session_d);
 
         log->info("Inbound session initialized and set callbacks!");
     }
@@ -265,7 +309,17 @@ namespace wshttp
         return data.size();
     }
 
-    void session::stream_close_hook() {}
+    int session::stream_close_hook(int32_t stream_id, uint32_t error_code)
+    {
+        if (auto it = _streams.find(stream_id); it != _streams.end())
+        {
+            log->info("Closing stream (ID:{}) with error code: {}", stream_id, error_code);
+            _streams.erase(it);
+        }
+        else
+            log->warn("Could not find stream (ID:{}); received error code: {}", stream_id, error_code);
+        return 0;
+    }
 
     int session::recv_frame_hook(int32_t stream_id)
     {
@@ -273,9 +327,14 @@ namespace wshttp
 
         if (not str)
         {
-            log->warn("Stream object could not be fetched from nghttp2 stream data!");
+            log->warn(
+                "Stream (ID: {}) could not be queried from nghttp2; {} held locally!",
+                stream_id,
+                _streams.count(stream_id) ? "ERROR it is" : "it is not");
             return 0;
         }
+
+        assert(_streams.count(stream_id));
 
         return {};
     }
@@ -318,6 +377,6 @@ namespace wshttp
 
     std::shared_ptr<stream> session::make_stream(int32_t stream_id)
     {
-        return _ep.template make_shared<stream>(*this, stream_id);
+        return _list._ep.template shared_ptr<stream>(new stream{*this, _session, stream_id}, deleters::stream_d);
     }
 }  //  namespace wshttp

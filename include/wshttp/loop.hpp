@@ -58,6 +58,7 @@ namespace wshttp
     class event_loop final
     {
         friend class endpoint;
+
         event_loop();
 
         event_loop(const event_loop&) = delete;

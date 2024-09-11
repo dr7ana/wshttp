@@ -11,8 +11,8 @@ namespace wshttp
         explicit ssl_creds(const std::string_view& keyfile, const std::string_view& certfile)
             : _keyfile{keyfile}, _certfile{certfile}
         {
-            // if (_keyfile.empty() or _certfile.empty())
-            //     throw std::invalid_argument{"Empty paths"};
+            if (_keyfile.empty() or _certfile.empty())
+                throw std::invalid_argument{"Empty paths"};
         }
 
         static std::shared_ptr<ssl_creds> make(const std::string_view& keyfile, const std::string_view& certfile)

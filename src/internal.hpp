@@ -6,6 +6,7 @@
 namespace wshttp
 {
     using namespace wshttp::literals;
+    class stream;
 
     namespace detail
     {
@@ -47,6 +48,11 @@ namespace wshttp
 
             log->critical("{}", msg);
         }
+
+        // static wshttp::stream *_get_stream(struct nghttp2_session *s, int32_t id)
+        // {
+        //     return static_cast<wshttp::stream *>(nghttp2_session_get_stream_user_data(s, id));
+        // }
     }  // namespace detail
 
     struct loop_callbacks
@@ -74,7 +80,8 @@ namespace wshttp
     struct listen_callbacks
     {
         static void accept_cb(
-            struct evconnlistener *listener, evutil_socket_t fd, struct sockaddr *addr, int addrlen, void *user_arg);
+            struct evconnlistener *evconn, evutil_socket_t fd, struct sockaddr *addr, int addrlen, void *user_arg);
+        static void error_cb(struct evconnlistener *evconn, void *user_arg);
     };
 
     struct session_callbacks
@@ -98,6 +105,18 @@ namespace wshttp
             uint8_t flags,
             void *user_arg);
         static int on_begin_headers_callback(nghttp2_session *session, const nghttp2_frame *frame, void *user_arg);
+    };
+
+    struct stream_callbacks
+    {
+        static ssize_t file_read_callback(
+            nghttp2_session *session,
+            int32_t stream_id,
+            uint8_t *buf,
+            size_t length,
+            uint32_t *data_flags,
+            nghttp2_data_source *source,
+            void *user_data);
     };
 
 }  // namespace wshttp

@@ -17,7 +17,7 @@ namespace wshttp
 
     std::shared_ptr<endpoint> endpoint::make(std::shared_ptr<event_loop> ev_loop)
     {
-        return std::shared_ptr<endpoint>{new endpoint{std::move(ev_loop)}};
+        return ev_loop->template make_shared<endpoint>(std::move(ev_loop));
     }
 
     endpoint::endpoint()
@@ -78,6 +78,8 @@ namespace wshttp
 
         _loop->call([&]() mutable {
             // clear all mappings here
+            for (auto& [_, l] : _listeners)
+                l->close_all();
             p.set_value();
         });
 

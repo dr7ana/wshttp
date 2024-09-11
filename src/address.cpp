@@ -10,6 +10,17 @@ namespace wshttp
         return parser->read(std::move(url)) ? parser->extract() : uri{};
     }
 
+    void uri::print_contents() const
+    {
+        log->info("scheme:{}", _fields[_scheme]);
+        log->info("userinfo:{}", _fields[_userinfo]);
+        log->info("host:{}", _fields[_host]);
+        log->info("port:{}", _fields[_port]);
+        log->info("pathname:{}", _fields[_pathname]);
+        log->info("query:{}", _fields[_query]);
+        log->info("fragment:{}", _fields[_fragment]);
+    }
+
     ipv4::ipv4(struct in_addr* a)
     {
         std::memmove(&addr, &a->s_addr, sizeof(a->s_addr));

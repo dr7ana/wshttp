@@ -59,13 +59,14 @@ namespace wshttp
 
     using tcp_listener = std::shared_ptr<evconnlistener>;
 
+    using session_ptr = std::shared_ptr<::nghttp2_session>;
+
     using ssl_ptr = std::unique_ptr<::SSL, decltype(deleters::ssl_d)>;
     using ssl_ctx_ptr = std::unique_ptr<::SSL_CTX, decltype(deleters::ssl_ctx_d)>;
 
     using event_ptr = std::unique_ptr<::event, decltype(deleters::event_d)>;
 
     using bufferevent_ptr = std::unique_ptr<::bufferevent, decltype(deleters::bufferevent_d)>;
-    using session_ptr = std::unique_ptr<::nghttp2_session, decltype(deleters::session_d)>;
 
     namespace concepts
     {
@@ -93,7 +94,8 @@ namespace wshttp
     namespace req
     {
         enum class FIELD { method, scheme, authority, path, status };
-    }
+        enum class STATUS { _200, _404 };
+    }  //  namespace req
 
     namespace detail
     {}

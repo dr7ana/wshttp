@@ -18,6 +18,18 @@ namespace wshttp
         l.create_inbound_session(ip_address{addr}, fd);
     }
 
+    void listen_callbacks::error_cb(struct evconnlistener * /* evconn */, void *user_arg)
+    {
+        auto &l = *static_cast<listener *>(user_arg);
+        log->warn("evconnlistener error");
+        l.close_all();
+    }
+
+    listener::~listener()
+    {
+        log->debug("Closing listener on port: {}", _port);
+    }
+
     void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)
     {
         return _ep.call_get([&]() {
@@ -26,7 +38,7 @@ namespace wshttp
             if (not b)
             {
                 log->critical("Connection from {} already exists! Rejecting new inbound...", remote);
-                // TODO: kill the connection here
+                _sessions.erase(it);
                 return;
             }
 
@@ -35,9 +47,16 @@ namespace wshttp
             if (not it->second)
             {
                 log->critical("Failed to make inbound session for remote: {}", it->first);
-                // TODO: kill the connection here
-                return;
+                _sessions.erase(it);
             }
+        });
+    }
+
+    void listener::close_all()
+    {
+        return _ep.call_get([&]() {
+            log->info("listener (port:{}) closing all sessions...", _port);
+            _sessions.clear();
         });
     }
 
@@ -64,5 +83,6 @@ namespace wshttp
             auto err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
             throw std::runtime_error{"TCP listener construction is fucked: {}"_format(err)};
         }
+        // evconnlistener_set_error_cb(_tcp.get(), evconnlistener_errorcb errorcb)
     }
 }  //  namespace wshttp
