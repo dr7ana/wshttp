@@ -55,7 +55,7 @@ namespace wshttp
 
         void send_session_data();
 
-        void recv_session_data();
+        void read_session_data();
 
         void write_session_data();
 

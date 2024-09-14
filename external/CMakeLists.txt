@@ -28,7 +28,7 @@ add_subdirectory(wslay EXCLUDE_FROM_ALL)
 add_library(wslay::wslay ALIAS wslay)
 
 # spdlog
-set(SPDLOG_FMT_EXTERNAL_HO ON CACHE BOOL "" FORCE)    # todo: add compile check for fmt version
+set(SPDLOG_FMT_EXTERNAL_HO ON CACHE BOOL "" FORCE)
 add_subdirectory(spdlog EXCLUDE_FROM_ALL)
 
 # libevent

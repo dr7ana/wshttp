@@ -57,14 +57,14 @@ namespace wshttp
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
         auto &s = *static_cast<session *>(user_arg);
-        s.recv_session_data();
+        s.read_session_data();
     }
 
     void session_callbacks::write_cb(struct bufferevent * /* bev */, void *user_arg)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
         auto &s = *static_cast<session *>(user_arg);
-        s.recv_session_data();
+        s.write_session_data();
     }
 
     nghttp2_ssize session_callbacks::send_callback(
@@ -286,7 +286,7 @@ namespace wshttp
         log->info("Inbound session successfully dispatched session data to remote: {}", remote());
     }
 
-    void session::recv_session_data()
+    void session::read_session_data()
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
         std::array<uint8_t, 4096> buf{};

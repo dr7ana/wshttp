@@ -2,6 +2,10 @@
 
 int main(int argc, char* argv[])
 {
+    SSL_library_init();
+    SSL_load_error_strings();
+    ERR_load_crypto_strings();
+
     std::signal(SIGPIPE, SIG_IGN);
     // std::signal(SIGINT, wshttp::signal_handler);
 

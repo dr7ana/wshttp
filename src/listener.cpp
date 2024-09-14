@@ -99,6 +99,8 @@ namespace wshttp
             throw std::runtime_error{"TCP listener construction is fucked: {}"_format(err)};
         }
 
+        evconnlistener_set_error_cb(_tcp.get(), listen_callbacks::error_cb);
+
         _fd = evconnlistener_get_fd(_tcp.get());
         log->debug("TCP listener has fd: {}", _fd);
 

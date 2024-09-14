@@ -66,13 +66,13 @@ namespace wshttp
         if (not _ctx)
             throw std::runtime_error{"Failed to create SSL Context: {}"_format(detail::current_error())};
 
-        SSL_CTX_set_options(
-            _ctx.get(),
-            SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION
-                | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
+        // SSL_CTX_set_options(
+        //     _ctx.get(),
+        //     SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION
+        //         | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
 
-        if (SSL_CTX_set1_curves_list(_ctx.get(), "P-256") != 1)
-            throw std::runtime_error{"Failed to set SSLL curves list: {}"_format(detail::current_error())};
+        // if (SSL_CTX_set1_curves_list(_ctx.get(), "P-256") != 1)
+        //     throw std::runtime_error{"Failed to set SSL curves list: {}"_format(detail::current_error())};
 
         if (SSL_CTX_use_PrivateKey_file(_ctx.get(), _keyfile, SSL_FILETYPE_PEM) != 1)
             throw std::runtime_error{"Failed to read private key file!"};

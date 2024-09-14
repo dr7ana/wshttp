@@ -52,8 +52,6 @@ namespace wshttp
     {
         inline const char *current_error()
         {
-            ERR_load_crypto_strings();
-            SSL_load_error_strings();
             return ERR_error_string(ERR_get_error(), NULL);
         }
 
