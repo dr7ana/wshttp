@@ -32,7 +32,8 @@ namespace wshttp
         static std::shared_ptr<session> make(listener& l, ip_address remote, evutil_socket_t fd);
 
       private:
-        listener& _list;
+        listener& _lst;
+        endpoint& _ep;
 
         evutil_socket_t _fd;
 
@@ -69,6 +70,8 @@ namespace wshttp
         int stream_recv_header(int32_t stream_id, req::headers hdr);
 
         std::shared_ptr<stream> make_stream(int32_t stream_id);
+
+        void close_session();
 
       public:
         const ip_address& local() const { return _path.local(); }

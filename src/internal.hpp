@@ -2,14 +2,61 @@
 
 #include "encoding.hpp"
 #include "format.hpp"
+#include "utils.hpp"
+
+#include <ada.h>
 
 namespace wshttp
 {
     using namespace wshttp::literals;
     class stream;
 
+    using url_result = ada::result<ada::url_aggregator>;
+
+    static constexpr auto https_proto = "https"sv;
+
+    struct uri;
+
+    class url_parser
+    {
+        std::unique_ptr<std::string> _data{};
+
+        std::unique_ptr<url_result> _res;
+
+        url_parser() = default;
+
+      public:
+        static std::shared_ptr<url_parser> make();
+
+        bool read(std::string input);
+
+        void print_aggregates();
+
+        uri extract();
+
+        url_result &url();
+
+        std::string href_str();
+        std::string_view href_sv();
+
+      private:
+        url_result &_url();  // does no safety checking
+        bool _parse();
+        void _reset();
+    };
+
+    // global parser
+    extern std::shared_ptr<url_parser> parser;
+
     namespace detail
     {
+        inline const char *current_error()
+        {
+            ERR_load_crypto_strings();
+            SSL_load_error_strings();
+            return ERR_error_string(ERR_get_error(), NULL);
+        }
+
         inline void parse_addr(int af, void *dest, const std::string &from)
         {
             auto rv = inet_pton(af, from.c_str(), dest);
@@ -48,11 +95,6 @@ namespace wshttp
 
             log->critical("{}", msg);
         }
-
-        // static wshttp::stream *_get_stream(struct nghttp2_session *s, int32_t id)
-        // {
-        //     return static_cast<wshttp::stream *>(nghttp2_session_get_stream_user_data(s, id));
-        // }
     }  // namespace detail
 
     struct loop_callbacks

@@ -27,9 +27,12 @@ namespace wshttp
     class app_context
     {
         friend class endpoint;
+        friend class listener;
+
+        app_context() = default;
 
       public:
-        app_context() = delete;
+        app_context(IO dir) : _dir{dir} { _init(); }
 
         template <typename... Opt>
         app_context(IO dir, Opt... opts) : _dir{dir}
@@ -38,10 +41,22 @@ namespace wshttp
             _init();
         }
 
-        const ssl_ctx_ptr& ctx() { return _ctx; }
+        template <typename T>
+            requires std::is_same_v<T, SSL_CTX>
+        operator T*()
+        {
+            return _ctx.get();
+        }
+
+        template <typename T>
+            requires std::is_same_v<T, SSL_CTX>
+        operator const T*() const
+        {
+            return _ctx.get();
+        }
 
       private:
-        const IO _dir;
+        IO _dir;
         std::shared_ptr<ssl_creds> _creds;
         ssl_ctx_ptr _ctx;
 
@@ -49,6 +64,7 @@ namespace wshttp
 
         void handle_io_opt(std::shared_ptr<ssl_creds> c);
 
+        void _init_inbound();
         void _init_inbound(const char* _keyfile, const char* _certfile);
         void _init_outbound(const char* _keyfile, const char* _certfile);
     };

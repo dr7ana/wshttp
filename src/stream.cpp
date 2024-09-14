@@ -1,5 +1,6 @@
 #include "stream.hpp"
 
+#include "endpoint.hpp"
 #include "internal.hpp"
 #include "session.hpp"
 
@@ -35,7 +36,10 @@ namespace wshttp
         return ret;
     }
 
-    stream::stream(session &s, const session_ptr &sess, int32_t id) : _s{s}, _session{sess}, _id{id} {}
+    stream::stream(session &s, const session_ptr &sess, int32_t id) : _s{s}, _session{sess}, _id{id}
+    {
+        _session = s._ep.template shared_ptr<nghttp2_session>(sess.get(), deleters::_session{});
+    }
 
     int stream::recv_header(req::headers hdr)
     {

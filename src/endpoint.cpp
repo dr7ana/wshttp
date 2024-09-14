@@ -2,7 +2,6 @@
 
 #include "dns.hpp"
 #include "internal.hpp"
-#include "parser.hpp"
 
 namespace wshttp
 {
@@ -60,7 +59,7 @@ namespace wshttp
     void endpoint::test_parse_method(std::string url)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
-        return _loop->call_get([&]() mutable {
+        return _loop->call_get([&]() {
             if (parser->read(std::move(url)))
             {
                 log->critical("Parser successfully read input: {}", parser->href_sv());
@@ -76,7 +75,7 @@ namespace wshttp
         std::promise<void> p;
         auto f = p.get_future();
 
-        _loop->call([&]() mutable {
+        _loop->call([&]() {
             // clear all mappings here
             for (auto& [_, l] : _listeners)
                 l->close_all();

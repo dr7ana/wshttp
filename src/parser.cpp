@@ -1,5 +1,3 @@
-#include "parser.hpp"
-
 #include "address.hpp"
 #include "internal.hpp"
 
@@ -20,13 +18,14 @@ namespace wshttp
     uri url_parser::extract()
     {
         return uri{
-            {_url()->get_protocol().data(),
-             _url()->get_username().data(),
-             _url()->get_host().data(),
-             _url()->get_port().data(),
-             _url()->get_pathname().data(),
-             _url()->get_search().data(),
-             _url()->get_hash().data()}};
+            _url()->get_protocol(),
+            _url()->get_username(),
+            _url()->get_host(),
+            _url()->get_port(),
+            _url()->get_pathname(),
+            _url()->get_search(),
+            _url()->get_hash(),
+            _url()->get_href()};
     }
 
     bool url_parser::_parse()
@@ -108,7 +107,6 @@ namespace wshttp
         }
 
         auto u = extract();
-        log->critical("{}", u.host());
 
         log->critical("scheme: {}", u.scheme());
         log->critical("userinfo: {}", u.userinfo());
@@ -118,6 +116,7 @@ namespace wshttp
         log->critical("path: {}", u.path());
         log->critical("query: {}", u.query());
         log->critical("fragment: {}", u.fragment());
+        log->critical("href: {}", u.href());
     }
 
 }  //  namespace wshttp

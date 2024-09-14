@@ -56,7 +56,7 @@ namespace wshttp
         server::server(wshttp::endpoint& e) : _ep{e}
         {
             _evdns = _ep.template shared_ptr<evdns_base>(
-                evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_NAMESERVERS_NO_DEFAULT), deleters::evdns_d);
+                evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_NAMESERVERS_NO_DEFAULT), deleters::_evdns{});
 
             evdns_set_log_fn([](int is_warning, const char* msg) {
                 if (is_warning)
@@ -92,7 +92,7 @@ namespace wshttp
                 _udp_bind = _ep.template shared_ptr<evdns_server_port>(
                     evdns_add_server_port_with_base(
                         _ep._loop->loop().get(), _udp_sock, 0, dns_callbacks::server_cb, this),
-                    deleters::evdns_port_d);
+                    deleters::_evdns_port{});
 
                 if (not _udp_bind)
                     throw std::runtime_error{"DNS server failed to add UDP port: {}"_format(strerror(errno))};
@@ -108,7 +108,7 @@ namespace wshttp
                         -1,
                         reinterpret_cast<sockaddr*>(&_bind),
                         sizeof(sockaddr)),
-                    deleters::evconnlistener_d);
+                    deleters::_evconnlistener{});
 
                 if (not _tcp_listener)
                 {

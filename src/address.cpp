@@ -1,10 +1,29 @@
 #include "address.hpp"
 
 #include "internal.hpp"
-#include "parser.hpp"
 
 namespace wshttp
 {
+    uri::uri(
+        const std::string_view& _s,
+        const std::string_view& _u,
+        const std::string_view& _h,
+        const std::string_view& _p,
+        const std::string_view& _pn,
+        const std::string_view& _q,
+        const std::string_view& _f,
+        const std::string_view& _hr)
+        : _fields{
+            std::string{_s},
+            std::string{_u},
+            std::string{_h},
+            std::string{_p},
+            std::string{_pn},
+            std::string{_q},
+            std::string{_f},
+            std::string{_hr}}
+    {}
+
     uri uri::parse(std::string url)
     {
         return parser->read(std::move(url)) ? parser->extract() : uri{};
@@ -106,6 +125,11 @@ namespace wshttp
             throw std::runtime_error{"Failed to understand incoming address sa_family"};
 
         enc::big_to_host_inplace(_port);
+    }
+
+    std::string ip_address::to_string() const
+    {
+        return "{}:{}"_format(_is_v4 ? _ipv4().to_string() : _ipv6().to_string(), _port);
     }
 
     std::string path::to_string() const

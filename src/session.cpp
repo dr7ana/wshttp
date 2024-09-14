@@ -29,7 +29,10 @@ namespace wshttp
             SSL_get0_alpn_selected(s._ssl.get(), &alpn, &alpn_len);
             if (not alpn or alpn_len != 2 or alpn != defaults::ALPN)
             {
-                log->warn("{} failed to negotiate 'h2' alpn!", msg);
+                log->warn(
+                    "{} failed to negotiate 'h2' alpn! Received: {}",
+                    msg,
+                    std::string_view{reinterpret_cast<const char *>(alpn), alpn_len});
             }
             else
             {
@@ -39,13 +42,15 @@ namespace wshttp
             }
         }
         else if (events & BEV_EVENT_EOF)
-            log->warn("{} EOF!", msg);
+            msg += " EOF!";
         else if (events & BEV_EVENT_ERROR)
-            log->warn("{} network error!", msg);
+            msg += " network error!";
         else if (events & BEV_EVENT_TIMEOUT)
-            log->warn("{} timed out!", msg);
+            msg += " timed out!";
 
-        // TODO: close the connection
+        log->warn("{}: {}", msg, detail::current_error());
+
+        s.close_session();
     }
 
     void session_callbacks::read_cb(struct bufferevent * /* bev */, void *user_arg)
@@ -163,54 +168,70 @@ namespace wshttp
     }
 
     session::session(listener &l, ip_address remote, evutil_socket_t fd)
-        : _list{l}, _fd{fd}, _path{{}, std::move(remote)}
+        : _lst{l}, _ep{_lst._ep}, _fd{fd}, _path{{}, std::move(remote)}
     {
         _init_internals();
     }
 
     void session::_init_internals()
     {
-        _list._ep.call([this]() mutable {
-            SSL *s;
-            s = SSL_new(_list._ctx->ctx().get());
+        assert(_ep.in_event_loop());
+        _ep.call_get([&]() {
+            _ssl.reset(_lst.new_ssl());
 
-            if (not s)
-                throw std::runtime_error{"Failed to create SSL/TLS for inbound: {}"_format(strerror(errno))};
-
-            _ssl.reset(s);
+            if (not _ssl)
+                throw std::runtime_error{"Failed to emplace SSL pointer for new session"};
 
             _bev.reset(bufferevent_openssl_socket_new(
-                _list._ep._loop->loop().get(),
+                _ep._loop->loop().get(),
                 _fd,
                 _ssl.get(),
                 BUFFEREVENT_SSL_ACCEPTING,
                 BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
 
             if (not _bev)
-                throw std::runtime_error{"Failed to create bufferevent socket for inbound TLS session: {}"_format(
-                    ERR_error_string(ERR_get_error(), NULL))};
+                throw std::runtime_error{
+                    "Failed to create bufferevent socket for inbound TLS session: {}"_format(detail::current_error())};
 
-            bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
+            bufferevent_openssl_set_allow_dirty_shutdown(_bev.get(), 1);
+
+            _fd = bufferevent_getfd(_bev.get());
+            int val = 1;
+            if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
+                throw std::runtime_error{
+                    "Failed to set TCP_NODELAY on inbound TLS session socket: {}"_format(detail::current_error())};
+
+            log->debug("Inbound session has fd: {}", _fd);
 
             sockaddr _laddr{};
             socklen_t len;
 
             if (getsockname(_fd, &_laddr, &len) < 0)
-                throw std::runtime_error{
-                    "Failed to get local socket address for incoming (remote: {})"_format(_path.remote())};
+                throw std::runtime_error{"Failed to get local socket address for incoming (remote: {}): {}, {}"_format(
+                    _path.remote(), detail::current_error(), errno)};
 
             _path._local = ip_address{&_laddr};
 
             bufferevent_setcb(
                 _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
 
+            bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
+
             log->info("Successfully configured inbound session; path: {}", _path);
+        });
+    }
+
+    void session::close_session()
+    {
+        _ep.call_soon([&]() {
+            log->info("Session (path: {}) signalling listener to close connection...", _path);
+            _lst.close_session(_path.remote());
         });
     }
 
     void session::config_send_initial()
     {
-        return _list._ep.call_get([this]() {
+        return _ep.call_get([this]() {
             initialize_session();
             send_server_initial();
             send_session_data();
@@ -238,7 +259,7 @@ namespace wshttp
         if (nghttp2_session_server_new(&_sess, callbacks, this) != 0)
             throw std::runtime_error{"Failed to initialize inbound session!"};
 
-        _session = std::shared_ptr<::nghttp2_session>(_sess, deleters::session_d);
+        _session = _ep.template shared_ptr<nghttp2_session>(_sess, deleters::_session{});
 
         log->info("Inbound session initialized and set callbacks!");
     }
@@ -248,6 +269,7 @@ namespace wshttp
         log->debug("{} called", __PRETTY_FUNCTION__);
         req::settings _settings;
         _settings.add_setting(NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100);
+        _settings.add_setting(NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES, 1);
 
         if (nghttp2_submit_settings(_session.get(), NGHTTP2_FLAG_NONE, _settings, _settings.size()) != 0)
             throw std::runtime_error{"Failed to submit session settings!"};
@@ -341,42 +363,49 @@ namespace wshttp
 
     int session::begin_headers_hook(int32_t stream_id)
     {
-        // create stream
-        auto [itr, b] = _streams.try_emplace(stream_id, nullptr);
+        assert(_ep.in_event_loop());
+        return _ep.call_get([&]() {
+            // create stream
+            auto [itr, b] = _streams.try_emplace(stream_id, nullptr);
 
-        if (not b)
-        {
-            log->error("Already have stream with stream-id:{}!", stream_id);
-            // TODO: something...
+            if (not b)
+            {
+                log->error("Already have stream with stream-id:{}!", stream_id);
+                // TODO: something...
+                return 0;
+            }
+
+            itr->second = make_stream(stream_id);
+
+            if (not itr->second)
+                throw std::runtime_error{"Failed to construct stream (id: {})"_format(stream_id)};
+
+            nghttp2_session_set_stream_user_data(_session.get(), stream_id, itr->second.get());
+
             return 0;
-        }
-
-        itr->second = make_stream(stream_id);
-
-        if (not itr->second)
-            throw std::runtime_error{"Failed to construct stream (id: {})"_format(stream_id)};
-
-        nghttp2_session_set_stream_user_data(_session.get(), stream_id, itr->second.get());
-
-        return 0;
+        });
     }
 
     int session::stream_recv_header(int32_t stream_id, req::headers hdr)
     {
-        if (auto itr = _streams.find(stream_id); itr != _streams.end())
-        {
-            return itr->second->recv_header(std::move(hdr));
-        }
-        else
-        {
-            log->critical("Could not find stream of id:{} to process incoming header!", stream_id);
-        }
+        assert(_ep.in_event_loop());
+        return _ep.call_get([&]() {
+            if (auto itr = _streams.find(stream_id); itr != _streams.end())
+            {
+                return itr->second->recv_header(std::move(hdr));
+            }
+            else
+            {
+                log->critical("Could not find stream of id:{} to process incoming header!", stream_id);
+            }
 
-        return 0;
+            return 0;
+        });
     }
 
     std::shared_ptr<stream> session::make_stream(int32_t stream_id)
     {
-        return _list._ep.template shared_ptr<stream>(new stream{*this, _session, stream_id}, deleters::stream_d);
+        assert(_ep.in_event_loop());
+        return _ep.template shared_ptr<stream>(new stream{*this, _session, stream_id}, deleters::stream_d);
     }
 }  //  namespace wshttp

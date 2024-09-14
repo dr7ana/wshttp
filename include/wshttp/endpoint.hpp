@@ -4,7 +4,6 @@
 #include "listener.hpp"
 #include "loop.hpp"
 #include "node.hpp"
-#include "parser.hpp"
 
 namespace wshttp
 {
@@ -20,14 +19,18 @@ namespace wshttp
     template <typename... Opt>
     static constexpr void check_for_ssl_creds()
     {
-        static_assert(
-            (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<ssl_creds>>) == 1,
-            "Node listen/connect require exactly one std::shared_ptr<ssl_creds> argument");
+        if constexpr ((std::is_same_v<std::shared_ptr<ssl_creds>, std::remove_cvref_t<Opt>> || ...))
+        {
+            static_assert(
+                (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<ssl_creds>>) == 1,
+                "Node listen/connect require exactly one std::shared_ptr<ssl_creds> argument");
+        }
     }
 
     class endpoint final
     {
         friend class session;
+        friend class stream;
         friend class listener;
         friend class dns::server;
 
@@ -74,7 +77,7 @@ namespace wshttp
                     throw std::invalid_argument{
                         "Cannot create tcp-listener at port {} -- listener already exists!"_format(port)};
 
-                itr->second = make_listener(*this, port, std::forward<Opt>(opts)...);
+                itr->second = make_shared<listener>(*this, port, std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"TCP listener construction is fucked"};
@@ -90,16 +93,18 @@ namespace wshttp
             check_for_ssl_creds<Opt...>();
 
             return call_get([&]() {
-                if (not parser->read(url))
+                auto _uri = uri::parse(url);
+                if (not _uri)
                     throw std::invalid_argument{"Failed to parse input url: {}"_format(url)};
 
-                auto [itr, b] = _nodes.try_emplace(parser->href_str(), nullptr);
+                auto [itr, b] = _nodes.try_emplace(std::string{_uri.host()}, nullptr);
 
                 if (not b)
                     throw std::invalid_argument{
-                        "Cannot create outbound node for href {} -- node already exists!"_format(parser->href_sv())};
+                        "Cannot create outbound node for input {} -- node already exists!"_format(url)};
 
-                itr->second = make_node(*this, std::forward<Opt>(opts)...);
+                // TODO: add uri to node ctor
+                itr->second = make_shared<node>(*this, std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"Node construction is fucked"};
@@ -139,7 +144,7 @@ namespace wshttp
 
         void set_shutdown_immediate(bool b = true) { _close_immediately = b; }
 
-      private:
+      protected:
         template <typename T, typename Callable>
         std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter)
         {
@@ -150,12 +155,6 @@ namespace wshttp
         std::shared_ptr<T> make_shared(Args&&... args)
         {
             return _loop->template make_shared<T>(std::forward<Args>(args)...);
-        }
-
-        template <typename... Opt>
-        std::shared_ptr<listener> make_listener(endpoint& e, uint16_t _port, Opt&&... opts)
-        {
-            return _loop->template make_shared<listener>(e, _port, std::forward<Opt>(opts)...);
         }
 
         template <typename... Opt>

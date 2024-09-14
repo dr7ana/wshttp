@@ -14,8 +14,9 @@ namespace wshttp
         void *user_arg)
     {
         auto &l = *static_cast<listener *>(user_arg);
-        log->info("Inbound connection established!");
-        l.create_inbound_session(ip_address{addr}, fd);
+        auto remote = ip_address{addr};
+        log->info("Inbound connection established (remote: {})", remote);
+        l.create_inbound_session(std::move(remote), fd);
     }
 
     void listen_callbacks::error_cb(struct evconnlistener * /* evconn */, void *user_arg)
@@ -32,7 +33,8 @@ namespace wshttp
 
     void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)
     {
-        return _ep.call_get([&]() {
+        assert(_ep.in_event_loop());
+        _ep.call_get([&]() {
             auto [it, b] = _sessions.emplace(remote, nullptr);
 
             if (not b)
@@ -42,7 +44,7 @@ namespace wshttp
                 return;
             }
 
-            it->second = session::make(*this, std::move(remote), fd);
+            it->second = _ep.template make_shared<session>(*this, std::move(remote), fd);
 
             if (not it->second)
             {
@@ -54,14 +56,27 @@ namespace wshttp
 
     void listener::close_all()
     {
-        return _ep.call_get([&]() {
+        assert(_ep.in_event_loop());
+        _ep.call([&]() {
             log->info("listener (port:{}) closing all sessions...", _port);
             _sessions.clear();
         });
     }
 
+    void listener::close_session(ip_address remote)
+    {
+        assert(_ep.in_event_loop());
+        _ep.call([&]() {
+            if (_sessions.erase(remote))
+                log->info("Successfully deleted session to remote: {}", remote);
+            else
+                log->warn("Failed to find session to remote: {}", remote);
+        });
+    }
+
     void listener::_init_internals()
     {
+        assert(_ep.in_event_loop());
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = INADDR_ANY;
@@ -76,13 +91,40 @@ namespace wshttp
                 -1,
                 reinterpret_cast<sockaddr *>(&addr),
                 sizeof(sockaddr)),
-            deleters::evconnlistener_d);
+            deleters::_evconnlistener{});
 
         if (not _tcp)
         {
             auto err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
             throw std::runtime_error{"TCP listener construction is fucked: {}"_format(err)};
         }
-        // evconnlistener_set_error_cb(_tcp.get(), evconnlistener_errorcb errorcb)
+
+        _fd = evconnlistener_get_fd(_tcp.get());
+        log->debug("TCP listener has fd: {}", _fd);
+
+        sockaddr _laddr{};
+        socklen_t len;
+
+        if (getsockname(_fd, &_laddr, &len) < 0)
+            throw std::runtime_error{"Failed to get local socket address for tcp listener on port {}: {}"_format(
+                _port, detail::current_error())};
+
+        _local = ip_address{&_laddr};
+        log->info("TCP listener has local bind: {}", _local);
     }
+
+    SSL *listener::new_ssl()
+    {
+        assert(_ep.in_event_loop());
+        return _ep.call_get([&]() {
+            SSL *_ssl;
+            _ssl = SSL_new(_ctx->_ctx.get());
+
+            if (!_ssl)
+                throw std::runtime_error{"Failed to create SSL/TLS for inbound: {}"_format(detail::current_error())};
+
+            return _ssl;
+        });
+    }
+
 }  //  namespace wshttp

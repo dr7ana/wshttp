@@ -6,7 +6,7 @@
 
 namespace wshttp
 {
-    static constexpr auto URI_FIELDS{7};
+    static constexpr auto URI_FIELDS{8};
     static constexpr uint16_t HTTPS_PORT{443};
     static constexpr auto HTTPS_SCHEME = "https:"sv;
 
@@ -23,11 +23,25 @@ namespace wshttp
 
     struct uri
     {
+        friend class url_parser;
+
+        uri() = default;
+
       private:
-        static enum { _scheme, _userinfo, _host, _port, _pathname, _query, _fragment } UF;
+        static enum { _scheme, _userinfo, _host, _port, _pathname, _query, _fragment, _href } UF;
+
+        explicit uri(
+            const std::string_view& _s,
+            const std::string_view& _u,
+            const std::string_view& _h,
+            const std::string_view& _p,
+            const std::string_view& _pn,
+            const std::string_view& _q,
+            const std::string_view& _f,
+            const std::string_view& _hr);
 
       public:
-        std::array<const char*, URI_FIELDS> _fields{};
+        std::array<std::string, URI_FIELDS> _fields{};
 
         template <concepts::string_view_compatible T>
         static uri parse(T u)
@@ -44,6 +58,7 @@ namespace wshttp
         std::string_view path() const { return _fields[_pathname]; }
         std::string_view query() const { return _fields[_query]; }
         std::string_view fragment() const { return _fields[_fragment]; }
+        std::string_view href() const { return _fields[_href]; }
 
         void print_contents() const;
 
@@ -168,7 +183,7 @@ namespace wshttp
 
         bool is_ipv4() const { return _is_v4; }
 
-        std::string to_string() const { return _is_v4 ? _ipv4().to_string() : _ipv6().to_string(); }
+        std::string to_string() const;
 
         auto operator<=>(const ip_address& a) const { return std::tie(_ip, _port) <=> std::tie(a._ip, a._port); }
         bool operator==(const ip_address& a) const { return (*this <=> a) == 0; }
@@ -238,6 +253,15 @@ namespace std
         {
             using ip_t = decltype(ip._ip);
             return hash<ip_t>{}(ip._ip);
+        }
+    };
+
+    template <>
+    struct hash<wshttp::uri>
+    {
+        size_t operator()(const wshttp::uri& u) const noexcept
+        {
+            return hash<string_view>{}(u.host());  // TODO: hash to href
         }
     };
 }  //  namespace std

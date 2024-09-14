@@ -8,7 +8,6 @@
 #include "wshttp/listener.hpp"
 #include "wshttp/loop.hpp"
 #include "wshttp/node.hpp"
-#include "wshttp/parser.hpp"
 #include "wshttp/request.hpp"
 #include "wshttp/session.hpp"
 #include "wshttp/stream.hpp"

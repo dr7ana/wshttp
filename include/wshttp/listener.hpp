@@ -12,8 +12,9 @@ namespace wshttp
     class listener
     {
         friend class session;
+        friend class endpoint;
         friend class event_loop;
-        friend struct listener_callbacks;
+        friend struct listen_callbacks;
 
         template <typename... Opt>
         explicit listener(endpoint& e, uint16_t p, Opt&&... opts) : _ep{e}, _port{p}
@@ -30,6 +31,8 @@ namespace wshttp
       private:
         endpoint& _ep;
         const uint16_t _port;
+        ip_address _local;
+        int _fd;
 
         tcp_listener _tcp;
         std::shared_ptr<app_context> _ctx;
@@ -39,9 +42,14 @@ namespace wshttp
 
         void _init_internals();
 
-      public:
-        void create_inbound_session(ip_address remote, evutil_socket_t fd);
+      protected:
+        SSL* new_ssl();
 
         void close_all();
+
+        void close_session(ip_address remote);
+
+      public:
+        void create_inbound_session(ip_address remote, evutil_socket_t fd);
     };
 }  //  namespace wshttp
