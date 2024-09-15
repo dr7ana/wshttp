@@ -63,11 +63,7 @@ namespace wshttp
 
         int stream_close_hook(int32_t stream_id, uint32_t error_code = 0);
 
-        int recv_frame_hook(int32_t stream_id);
-
         int begin_headers_hook(int32_t stream_id);
-
-        int stream_recv_header(int32_t stream_id, req::headers hdr);
 
         std::shared_ptr<stream> make_stream(int32_t stream_id);
 

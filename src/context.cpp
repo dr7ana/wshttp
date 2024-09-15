@@ -12,6 +12,8 @@ namespace wshttp
         unsigned int inlen,
         void * /* user_arg */)
     {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         if (nghttp2_select_alpn(out, outlen, in, inlen) != 1)
         {
             log->critical("Failed to select ALPN proto!");
@@ -45,47 +47,61 @@ namespace wshttp
 
     void app_context::_init_inbound()
     {
+        log->debug("Creating inbound context using system certs...");
         _ctx.reset(SSL_CTX_new(TLS_server_method()));
 
         if (not _ctx)
-            throw std::runtime_error{"Failed to create SSL Context: {}"_format(detail::current_error())};
+            throw std::runtime_error{"Failed to create SSL context: {}"_format(detail::current_error())};
 
         X509_STORE *storage = SSL_CTX_get_cert_store(_ctx.get());
 
         if (X509_STORE_set_default_paths(storage) != 1)
             throw std::runtime_error{"Call to X509_STORE_set_default_paths failed: {}"_format(detail::current_error())};
 
-        SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
-        SSL_CTX_set_cert_verify_callback(_ctx.get(), nullptr, nullptr);
+        // SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
+        // SSL_CTX_set_cert_verify_callback(_ctx.get(), nullptr, nullptr);
     }
 
     void app_context::_init_inbound(const char *_keyfile, const char *_certfile)
     {
+        log->debug("Creating inbound context using user key/cert...");
         _ctx.reset(SSL_CTX_new(TLS_server_method()));
 
         if (not _ctx)
-            throw std::runtime_error{"Failed to create SSL Context: {}"_format(detail::current_error())};
+            throw std::runtime_error{"Failed to create SSL context: {}"_format(detail::current_error())};
 
-        // SSL_CTX_set_options(
-        //     _ctx.get(),
-        //     SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION
-        //         | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
-
-        // if (SSL_CTX_set1_curves_list(_ctx.get(), "P-256") != 1)
-        //     throw std::runtime_error{"Failed to set SSL curves list: {}"_format(detail::current_error())};
+        SSL_CTX_set_options(
+            _ctx.get(),
+            SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION
+                | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
 
         if (SSL_CTX_use_PrivateKey_file(_ctx.get(), _keyfile, SSL_FILETYPE_PEM) != 1)
             throw std::runtime_error{"Failed to read private key file!"};
 
-        if (SSL_CTX_use_certificate_file(_ctx.get(), _certfile, SSL_FILETYPE_PEM) != 1)
+        // if (SSL_CTX_use_certificate_file(_ctx.get(), _certfile, SSL_FILETYPE_PEM) != 1)
+        if (SSL_CTX_use_certificate_chain_file(_ctx.get(), _certfile) != 1)
             throw std::runtime_error{"Failed to read certificate file!"};
 
-        SSL_CTX_set_alpn_select_cb(_ctx.get(), ctx_callbacks::server_select_alpn_proto_cb, NULL);
+        // SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
+        // SSL_CTX_set_cert_verify_callback(_ctx.get(), nullptr, nullptr);
+        SSL_CTX_set_alpn_select_cb(_ctx.get(), ctx_callbacks::server_select_alpn_proto_cb, this);
     }
 
     void app_context::_init_outbound(const char *_keyfile, const char *_certfile)
     {
-        (void)_keyfile;
-        (void)_certfile;
+        log->debug("Creating outbound context using user key/cert...");
+        _ctx.reset(SSL_CTX_new(TLS_client_method()));
+
+        if (not _ctx)
+            throw std::runtime_error{"Failed to create SSL context: {}"_format(detail::current_error())};
+
+        if (SSL_CTX_use_PrivateKey_file(_ctx.get(), _keyfile, SSL_FILETYPE_PEM) != 1)
+            throw std::runtime_error{"Failed to read private key file!"};
+
+        // if (SSL_CTX_use_certificate_file(_ctx.get(), _certfile, SSL_FILETYPE_PEM) != 1)
+        if (SSL_CTX_use_certificate_chain_file(_ctx.get(), _certfile) != 1)
+            throw std::runtime_error{"Failed to read certificate file!"};
+
+        SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
     }
 }  //  namespace wshttp

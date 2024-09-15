@@ -6,6 +6,11 @@ namespace wshttp
 {
     class endpoint;
 
+    namespace auth
+    {
+        enum class ALPN { NONE, UNVALIDATED, VALIDATED };
+    }  //  namespace auth
+
     struct ssl_creds
     {
         explicit ssl_creds(const std::string_view& keyfile, const std::string_view& certfile)
@@ -26,6 +31,7 @@ namespace wshttp
 
     class app_context
     {
+        friend struct ctx_callbacks;
         friend class endpoint;
         friend class listener;
 
