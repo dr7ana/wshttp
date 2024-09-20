@@ -38,7 +38,7 @@ namespace wshttp
         log->debug("Shutting down client...");
 
         if (not _close_immediately)
-            shutdown_node();
+            shutdown_endpoint();
 
         _listeners.clear();
 
@@ -51,7 +51,7 @@ namespace wshttp
         log->info("Client shutdown complete!");
     }
 
-    std::shared_ptr<endpoint> endpoint::create_linked_node()
+    std::shared_ptr<endpoint> endpoint::create_linked_endpoint()
     {
         return endpoint::make(_loop);
     }
@@ -68,7 +68,19 @@ namespace wshttp
         });
     }
 
-    void endpoint::shutdown_node()
+    void endpoint::close_listener(uint16_t p)
+    {
+        return _loop->call_get([&]() {
+            if (_listeners.erase(p))
+            {
+                log->info("Endpoint closed listener on port: {}", p);
+            }
+            else
+                log->warn("Endpoint failed to find listener (port: {}) to close!", p);
+        });
+    }
+
+    void endpoint::shutdown_endpoint()
     {
         log->debug("{} called...", __PRETTY_FUNCTION__);
 

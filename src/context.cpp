@@ -23,12 +23,6 @@ namespace wshttp
         return SSL_TLSEXT_ERR_OK;
     }
 
-    void app_context::handle_io_opt(std::shared_ptr<ssl_creds> c)
-    {
-        log->debug("app_context emplacing ssl creds...");
-        _creds = std::move(c);
-    }
-
     void app_context::_init()
     {
         switch (_dir)
@@ -58,7 +52,7 @@ namespace wshttp
         if (X509_STORE_set_default_paths(storage) != 1)
             throw std::runtime_error{"Call to X509_STORE_set_default_paths failed: {}"_format(detail::current_error())};
 
-        // SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
+        SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
         // SSL_CTX_set_cert_verify_callback(_ctx.get(), nullptr, nullptr);
     }
 
@@ -73,18 +67,40 @@ namespace wshttp
         SSL_CTX_set_options(
             _ctx.get(),
             SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION
-                | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
+                | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION | SSL_OP_SINGLE_ECDH_USE | SSL_OP_NO_TICKET
+                | SSL_OP_CIPHER_SERVER_PREFERENCE);
 
         if (SSL_CTX_use_PrivateKey_file(_ctx.get(), _keyfile, SSL_FILETYPE_PEM) != 1)
             throw std::runtime_error{"Failed to read private key file!"};
 
-        // if (SSL_CTX_use_certificate_file(_ctx.get(), _certfile, SSL_FILETYPE_PEM) != 1)
-        if (SSL_CTX_use_certificate_chain_file(_ctx.get(), _certfile) != 1)
+        if (SSL_CTX_use_certificate_file(_ctx.get(), _certfile, SSL_FILETYPE_PEM) != 1)
             throw std::runtime_error{"Failed to read certificate file!"};
 
-        // SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
-        // SSL_CTX_set_cert_verify_callback(_ctx.get(), nullptr, nullptr);
+        if (SSL_CTX_check_private_key(_ctx.get()) != 1)
+            throw std::runtime_error{"Failed to check private key!"};
+
         SSL_CTX_set_alpn_select_cb(_ctx.get(), ctx_callbacks::server_select_alpn_proto_cb, this);
+    }
+
+    void app_context::_init_outbound()
+    {
+        log->debug("Creating outbound context using system certs...");
+        _ctx.reset(SSL_CTX_new(TLS_client_method()));
+
+        if (not _ctx)
+            throw std::runtime_error{"Failed to create SSL context: {}"_format(detail::current_error())};
+
+        SSL_CTX_set_options(
+            _ctx.get(),
+            SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION
+                | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION | SSL_OP_SINGLE_ECDH_USE | SSL_OP_NO_TICKET);
+
+        // for client outbounds w/ no keys
+        if (SSL_CTX_set_default_verify_paths(_ctx.get()) != 1)
+            throw std::runtime_error{
+                "Call to SSL_CTX_set_default_verify_paths failed: {}"_format(detail::current_error())};
+
+        SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
     }
 
     void app_context::_init_outbound(const char *_keyfile, const char *_certfile)
@@ -95,12 +111,19 @@ namespace wshttp
         if (not _ctx)
             throw std::runtime_error{"Failed to create SSL context: {}"_format(detail::current_error())};
 
+        SSL_CTX_set_options(
+            _ctx.get(),
+            SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION
+                | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION | SSL_OP_SINGLE_ECDH_USE | SSL_OP_NO_TICKET);
+
         if (SSL_CTX_use_PrivateKey_file(_ctx.get(), _keyfile, SSL_FILETYPE_PEM) != 1)
             throw std::runtime_error{"Failed to read private key file!"};
 
-        // if (SSL_CTX_use_certificate_file(_ctx.get(), _certfile, SSL_FILETYPE_PEM) != 1)
-        if (SSL_CTX_use_certificate_chain_file(_ctx.get(), _certfile) != 1)
+        if (SSL_CTX_use_certificate_file(_ctx.get(), _certfile, SSL_FILETYPE_PEM) != 1)
             throw std::runtime_error{"Failed to read certificate file!"};
+
+        if (SSL_CTX_check_private_key(_ctx.get()) != 1)
+            throw std::runtime_error{"Failed to check private key!"};
 
         SSL_CTX_set_verify(_ctx.get(), SSL_VERIFY_PEER, nullptr);
     }

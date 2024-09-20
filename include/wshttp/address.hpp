@@ -261,7 +261,7 @@ namespace std
     {
         size_t operator()(const wshttp::uri& u) const noexcept
         {
-            return hash<string_view>{}(u.host());  // TODO: hash to href
+            return hash<string_view>{}(u.href());  // TODO: hash to href
         }
     };
 }  //  namespace std

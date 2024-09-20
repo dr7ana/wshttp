@@ -79,6 +79,20 @@ namespace wshttp
         return s.send_hook(ustring_view{data, length});
     }
 
+    // int session_callbacks::on_frame_send_callback(nghttp2_session *session, const nghttp2_frame *frame, void
+    // *user_arg)
+    // {
+    //     log->debug("{} called", __PRETTY_FUNCTION__);
+    //     auto &s = _get_session(user_arg);
+    // }
+
+    // int session_callbacks::on_data_chunk_recv_callback(
+    //     nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_arg)
+    // {
+    //     log->debug("{} called", __PRETTY_FUNCTION__);
+    //     auto &s = _get_session(user_arg);
+    // }
+
     int session_callbacks::on_frame_recv_callback(nghttp2_session *s, const nghttp2_frame *frame, void * /* user_arg */)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
@@ -107,7 +121,6 @@ namespace wshttp
         }
 
         log->debug("Received nghttp2_frame_type value: {}", static_cast<int>(frame->hd.type));
-
         return 0;
     }
 
@@ -166,13 +179,13 @@ namespace wshttp
         return s.begin_headers_hook(frame->hd.stream_id);
     }
 
-    std::shared_ptr<session> session::make(listener &l, ip_address remote, evutil_socket_t fd)
+    std::shared_ptr<session> session::make(IO dir, listener &l, ip_address remote, evutil_socket_t fd)
     {
-        return l._ep.template make_shared<session>(l, std::move(remote), fd);
+        return l._ep.template make_shared<session>(dir, l, std::move(remote), fd);
     }
 
-    session::session(listener &l, ip_address remote, evutil_socket_t fd)
-        : _lst{l}, _ep{_lst._ep}, _fd{fd}, _path{{}, std::move(remote)}
+    session::session(IO dir, listener &l, ip_address remote, evutil_socket_t fd)
+        : _dir{dir}, _lst{l}, _ep{_lst._ep}, _fd{fd}, _path{{}, std::move(remote)}
     {
         _init_internals();
     }
@@ -181,7 +194,7 @@ namespace wshttp
     {
         assert(_ep.in_event_loop());
         _ep.call_get([&]() {
-            _ssl.reset(_lst.new_ssl());
+            _ssl.reset(_lst.new_ssl(_dir));
 
             if (not _ssl)
                 throw std::runtime_error{"Failed to emplace SSL pointer for new session"};
@@ -190,12 +203,12 @@ namespace wshttp
                 _ep._loop->loop().get(),
                 _fd,
                 _ssl.get(),
-                BUFFEREVENT_SSL_ACCEPTING,
+                is_inbound() ? BUFFEREVENT_SSL_ACCEPTING : BUFFEREVENT_SSL_CONNECTING,
                 BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
 
             if (not _bev)
-                throw std::runtime_error{
-                    "Failed to create bufferevent socket for inbound TLS session: {}"_format(detail::current_error())};
+                throw std::runtime_error{"Failed to create bufferevent socket for {}bound TLS session: {}"_format(
+                    is_inbound() ? "in" : "out", detail::current_error())};
 
             bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 
@@ -246,24 +259,38 @@ namespace wshttp
     void session::initialize_session()
     {
         assert(_ep.in_event_loop());
+        nghttp2_option *opt;
         nghttp2_session *_sess;
         nghttp2_session_callbacks *callbacks;
 
         nghttp2_session_callbacks_new(&callbacks);
 
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, session_callbacks::on_stream_close_callback);
+
         nghttp2_session_callbacks_set_send_callback2(callbacks, session_callbacks::send_callback);
 
         nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, session_callbacks::on_frame_recv_callback);
 
-        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, session_callbacks::on_stream_close_callback);
-
-        nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
-
         nghttp2_session_callbacks_set_on_begin_headers_callback(
             callbacks, session_callbacks::on_begin_headers_callback);
 
-        if (nghttp2_session_server_new(&_sess, callbacks, this) != 0)
-            throw std::runtime_error{"Failed to initialize inbound session!"};
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
+
+        // nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, nullptr);
+
+        // nghttp2_session_callbacks_set_before_frame_send_callback(callbacks, nullptr);
+
+        // nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, nullptr);
+
+        // nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, nullptr);
+
+        if (auto rv = nghttp2_option_new(&opt); rv != 0)
+            throw std::runtime_error{"Failed to create nghttp2 session option struct: {}"_format(nghttp2_strerror(rv))};
+
+        nghttp2_option_set_no_recv_client_magic(opt, 1);
+
+        if (auto rv = nghttp2_session_server_new2(&_sess, callbacks, this, opt); rv != 0)
+            throw std::runtime_error{"Failed to initialize inbound session: {}"_format(nghttp2_strerror(rv))};
 
         _session = _ep.template shared_ptr<nghttp2_session>(_sess, deleters::_session{});
 
@@ -350,14 +377,16 @@ namespace wshttp
     int session::stream_close_hook(int32_t stream_id, uint32_t error_code)
     {
         assert(_ep.in_event_loop());
-        if (auto it = _streams.find(stream_id); it != _streams.end())
-        {
-            log->info("Closing stream (ID:{}) with error code: {}", stream_id, error_code);
-            _streams.erase(it);
-        }
-        else
-            log->warn("Could not find stream (ID:{}); received error code: {}", stream_id, error_code);
-        return 0;
+        return _ep.call_get([&]() {
+            if (auto it = _streams.find(stream_id); it != _streams.end())
+            {
+                log->info("Closing stream (ID:{}) with error code: {}", stream_id, error_code);
+                _streams.erase(it);
+            }
+            else
+                log->warn("Could not find stream (ID:{}); received error code: {}", stream_id, error_code);
+            return 0;
+        });
     }
 
     int session::begin_headers_hook(int32_t stream_id)

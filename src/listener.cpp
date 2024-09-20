@@ -22,13 +22,20 @@ namespace wshttp
     void listen_callbacks::error_cb(struct evconnlistener * /* evconn */, void *user_arg)
     {
         auto &l = *static_cast<listener *>(user_arg);
-        log->warn("evconnlistener error");
-        l.close_all();
+        log->warn("Evconnlistener error; closing listener...");
+        return l._ep.close_listener(l._port);
     }
 
     listener::~listener()
     {
         log->debug("Closing listener on port: {}", _port);
+        close_all();
+    }
+
+    void listener::handle_lst_opt(std::shared_ptr<ssl_creds> c)
+    {
+        log->debug("Listener creating I/O context...");
+        io_ctx = app_context::make_pair(c);
     }
 
     void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)
@@ -44,7 +51,7 @@ namespace wshttp
                 return;
             }
 
-            it->second = _ep.template make_shared<session>(*this, std::move(remote), fd);
+            it->second = _ep.template make_shared<session>(IO::INBOUND, *this, std::move(remote), fd);
 
             if (not it->second)
             {
@@ -68,9 +75,9 @@ namespace wshttp
         assert(_ep.in_event_loop());
         _ep.call([&]() {
             if (_sessions.erase(remote))
-                log->info("Successfully deleted session to remote: {}", remote);
+                log->info("Listener closed session to remote: {}", remote);
             else
-                log->warn("Failed to find session to remote: {}", remote);
+                log->warn("Listener failed to find session (remote: {}) to close!", remote);
         });
     }
 
@@ -115,15 +122,21 @@ namespace wshttp
         log->info("TCP listener has local bind: {}", _local);
     }
 
-    SSL *listener::new_ssl()
+    SSL *listener::new_ssl(IO dir)
     {
         assert(_ep.in_event_loop());
         return _ep.call_get([&]() {
             SSL *_ssl;
-            _ssl = SSL_new(_ctx->_ctx.get());
+            auto is_inbound = dir == IO::INBOUND;
+
+            auto &ctx = is_inbound ? io_ctx.first : io_ctx.second;
+            _ssl = SSL_new(ctx->_ctx.get());
 
             if (!_ssl)
-                throw std::runtime_error{"Failed to create SSL/TLS for inbound: {}"_format(detail::current_error())};
+                throw std::runtime_error{"Failed to create SSL/TLS for {}bound: {}"_format(
+                    is_inbound ? "in" : "out", detail::current_error())};
+
+            log->trace("Created SSL/TLS for {}bound...", is_inbound ? "in" : "out");
 
             return _ssl;
         });

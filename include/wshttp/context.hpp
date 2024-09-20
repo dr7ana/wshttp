@@ -29,22 +29,31 @@ namespace wshttp
         const fs::path _certfile;
     };
 
+    class app_context;
+    using ctx_pair = std::pair<std::shared_ptr<app_context>, std::shared_ptr<app_context>>;
+
     class app_context
     {
         friend struct ctx_callbacks;
         friend class endpoint;
+        friend class node_old;
         friend class listener;
 
         app_context() = default;
 
+        app_context(IO dir, std::shared_ptr<ssl_creds>& c) : _dir{dir}, _creds{c} { _init(); }
+
+        static std::shared_ptr<app_context> make(IO dir, std::shared_ptr<ssl_creds>& c)
+        {
+            return std::shared_ptr<app_context>{new app_context{dir, c}};
+        }
+
       public:
         app_context(IO dir) : _dir{dir} { _init(); }
 
-        template <typename... Opt>
-        app_context(IO dir, Opt... opts) : _dir{dir}
+        static ctx_pair make_pair(std::shared_ptr<ssl_creds> c)
         {
-            handle_io_opt(std::forward<Opt>(opts)...);
-            _init();
+            return ctx_pair{make(IO::INBOUND, c), make(IO::OUTBOUND, c)};
         }
 
         template <typename T>
@@ -68,10 +77,10 @@ namespace wshttp
 
         void _init();
 
-        void handle_io_opt(std::shared_ptr<ssl_creds> c);
-
         void _init_inbound();
         void _init_inbound(const char* _keyfile, const char* _certfile);
+
+        void _init_outbound();
         void _init_outbound(const char* _keyfile, const char* _certfile);
     };
 }  //  namespace wshttp

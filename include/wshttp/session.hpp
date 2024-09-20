@@ -17,7 +17,7 @@ namespace wshttp
         friend struct session_callbacks;
 
       public:
-        session(listener& l, ip_address remote, evutil_socket_t fd);
+        session(IO dir, listener& l, ip_address remote, evutil_socket_t fd);
 
         session() = delete;
 
@@ -29,9 +29,14 @@ namespace wshttp
 
         ~session() = default;
 
-        static std::shared_ptr<session> make(listener& l, ip_address remote, evutil_socket_t fd);
+        static std::shared_ptr<session> make(IO dir, listener& l, ip_address remote, evutil_socket_t fd);
+
+        bool is_inbound() const { return _dir == IO::INBOUND; }
+        bool is_outbound() const { return _dir == IO::OUTBOUND; }
 
       private:
+        IO _dir;
+
         listener& _lst;
         endpoint& _ep;
 
@@ -50,6 +55,8 @@ namespace wshttp
         void config_send_initial();
 
         void initialize_session();
+
+        void initialize_client_session();
 
         void send_server_initial();
 

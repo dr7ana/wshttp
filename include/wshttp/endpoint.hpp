@@ -32,6 +32,8 @@ namespace wshttp
         friend class session;
         friend class stream;
         friend class listener;
+        friend struct listen_callbacks;
+        friend class node_old;
         friend class dns::server;
 
       public:
@@ -47,7 +49,7 @@ namespace wshttp
 
         ~endpoint();
 
-        [[nodiscard]] std::shared_ptr<endpoint> create_linked_node();
+        [[nodiscard]] std::shared_ptr<endpoint> create_linked_endpoint();
 
       private:
         std::shared_ptr<event_loop> _loop;
@@ -59,8 +61,11 @@ namespace wshttp
 
         // local listeners managing inbound https connections
         std::unordered_map<uint16_t, std::shared_ptr<listener>> _listeners;
-        // local nodes manging outbound https connections
-        std::unordered_map<std::string, std::shared_ptr<node>> _nodes;
+
+        // local nodes managing outbound https connections
+        std::unordered_map<std::string, std::shared_ptr<node_old>> _nodes;
+
+        std::unordered_map<std::string, std::shared_ptr<listener>> _outbounds;
 
         std::atomic<bool> _close_immediately{false};
 
@@ -88,7 +93,7 @@ namespace wshttp
         }
 
         template <typename... Opt>
-        bool connect(std::string url, Opt&&... opts)
+        bool connect(std::string_view url, Opt&&... opts)
         {
             check_for_ssl_creds<Opt...>();
 
@@ -101,10 +106,9 @@ namespace wshttp
 
                 if (not b)
                     throw std::invalid_argument{
-                        "Cannot create outbound node for input {} -- node already exists!"_format(url)};
+                        "Cannot create outbound node for input: {} -- node already exists!"_format(url)};
 
-                // TODO: add uri to node ctor
-                itr->second = make_shared<node>(*this, std::forward<Opt>(opts)...);
+                itr->second = make_shared<node_old>(*this, std::move(_uri), std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"Node construction is fucked"};
@@ -157,14 +161,10 @@ namespace wshttp
             return _loop->template make_shared<T>(std::forward<Args>(args)...);
         }
 
-        template <typename... Opt>
-        std::shared_ptr<node> make_node(endpoint& e, Opt&&... opts)
-        {
-            return _loop->template make_shared<node>(e, std::forward<Opt>(opts)...);
-        }
+        void close_listener(uint16_t p);
 
         bool in_event_loop() const { return _loop->in_event_loop(); }
 
-        void shutdown_node();
+        void shutdown_endpoint();
     };
 }  //  namespace wshttp

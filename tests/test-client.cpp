@@ -44,7 +44,7 @@ int main(int argc, char* argv[])
             ep->listen(5544, creds);
         else
             ep->listen(5544);
-        // ep->test_parse_method("https://www.google.com");
+        ep->test_parse_method("https://www.google.com");
     }
     catch (const std::exception& e)
     {
