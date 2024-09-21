@@ -8,10 +8,12 @@ AlignEscapedNewlinesLeft: 'true'
 AlignOperands: 'false'
 AlignTrailingComments: 'true'
 ColumnLimit: 120
+DerivePointerAlignment: false
 PointerAlignment: Left
 QualifierAlignment: Custom
 QualifierOrder: ['inline', 'static', 'constexpr', 'const', 'type']
 ReferenceAlignment: Left
+ReflowComments: false
 
 # bracing
 BreakBeforeBraces: Custom

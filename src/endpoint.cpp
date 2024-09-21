@@ -1,6 +1,6 @@
 #include "endpoint.hpp"
 
-#include "dns.hpp"
+// #include "dns.hpp"
 #include "internal.hpp"
 
 namespace wshttp
@@ -8,30 +8,6 @@ namespace wshttp
     using namespace wshttp::literals;
 
     caller_id_t endpoint::next_client_id = 0;
-
-    std::shared_ptr<endpoint> endpoint::make()
-    {
-        return std::shared_ptr<endpoint>{new endpoint{}};
-    }
-
-    std::shared_ptr<endpoint> endpoint::make(std::shared_ptr<event_loop> ev_loop)
-    {
-        return ev_loop->template make_shared<endpoint>(std::move(ev_loop));
-    }
-
-    endpoint::endpoint()
-        : _loop{event_loop::make()}, _dns{_loop->template make_shared<dns::server>(*this)}, client_id{++next_client_id}
-    {
-        log->trace("Creating client with new event loop!");
-        _dns->initialize();
-    }
-
-    endpoint::endpoint(std::shared_ptr<event_loop> ev_loop)
-        : _loop{std::move(ev_loop)}, _dns{_loop->template make_shared<dns::server>(*this)}, client_id{++next_client_id}
-    {
-        log->trace("Creating client with pre-existing event loop!");
-        _dns->initialize();
-    }
 
     endpoint::~endpoint()
     {
@@ -49,11 +25,6 @@ namespace wshttp
         _loop->stop_tickers(client_id);
 
         log->info("Client shutdown complete!");
-    }
-
-    std::shared_ptr<endpoint> endpoint::create_linked_endpoint()
-    {
-        return endpoint::make(_loop);
     }
 
     void endpoint::test_parse_method(std::string url)
@@ -95,5 +66,21 @@ namespace wshttp
         });
 
         f.get();
+    }
+
+    SSL_CTX* endpoint::inbound_ctx()
+    {
+        return _ctx->I();
+    }
+
+    SSL_CTX* endpoint::outbound_ctx()
+    {
+        return _ctx->O();
+    }
+
+    void endpoint::handle_ep_opt(std::shared_ptr<ssl_creds> c)
+    {
+        log->info("New endpoint configured with SSL credentials");
+        _ctx = app_context::make(std::move(c));
     }
 }  //  namespace wshttp

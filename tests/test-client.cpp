@@ -39,9 +39,9 @@ int main(int argc, char* argv[])
 
     try
     {
-        ep = wshttp::endpoint::make(loop);
+        ep = wshttp::endpoint::make(loop, creds);
         if (creds)
-            ep->listen(5544, creds);
+            ep->listen(5544);
         else
             ep->listen(5544);
         // ep->test_parse_method("https://www.google.com");

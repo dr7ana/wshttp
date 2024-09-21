@@ -39,44 +39,25 @@ namespace wshttp
         friend class node;
         friend class listener;
 
-        app_context() = default;
-
-        app_context(IO dir, std::shared_ptr<ssl_creds>& c) : _dir{dir}, _creds{c} { _init(); }
+        app_context(std::shared_ptr<ssl_creds> c) : _creds{c} { _init(); }
 
       public:
-        app_context(IO dir) : _dir{dir} { _init(); }
-
-        static std::shared_ptr<app_context> make(IO dir, std::shared_ptr<ssl_creds>& c)
+        static std::shared_ptr<app_context> make(std::shared_ptr<ssl_creds> c)
         {
-            return std::shared_ptr<app_context>{new app_context{dir, c}};
+            return std::shared_ptr<app_context>{new app_context{c}};
         }
 
-        // SSL_CTX* I() { return _i.get(); }
-        // const SSL_CTX* I() const { return _i.get(); }
+        SSL_CTX* I() { return _i.get(); }
+        const SSL_CTX* I() const { return _i.get(); }
 
-        // SSL_CTX* O() { return _o.get(); }
-        // const SSL_CTX* O() const { return _o.get(); }
-
-        template <typename T>
-            requires std::is_same_v<T, SSL_CTX>
-        operator T*()
-        {
-            return _ctx.get();
-        }
-
-        template <typename T>
-            requires std::is_same_v<T, SSL_CTX>
-        operator const T*() const
-        {
-            return _ctx.get();
-        }
+        SSL_CTX* O() { return _o.get(); }
+        const SSL_CTX* O() const { return _o.get(); }
 
       private:
-        IO _dir;
         std::shared_ptr<ssl_creds> _creds;
-        ssl_ctx_ptr _ctx;
-        // ssl_ctx_ptr _i;
-        // ssl_ctx_ptr _o;
+
+        ssl_ctx_ptr _i;
+        ssl_ctx_ptr _o;
 
         void _init();
 

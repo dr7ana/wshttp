@@ -29,7 +29,12 @@ namespace wshttp
         std::function<void()> f;
 
         void init_event(
-            const loop_ptr& _loop, std::chrono::microseconds _t, std::function<void()> task, bool one_off = false);
+            const loop_ptr& _loop,
+            std::chrono::microseconds _t,
+            std::function<void()> task,
+            bool one_off = false,
+            bool start_immediately = true,
+            bool fixed_interval = false);
 
         ev_watcher() = default;
 
@@ -130,25 +135,22 @@ namespace wshttp
             return fut.get();
         }
 
-        /** This overload of `call_every` will begin an indefinitely repeating object tied to the lifetime of `caller`.
-            Prior to executing each iteration, the weak_ptr will be checked to ensure the calling object lifetime has
-            persisted up to that point.
-        */
-        template <typename Callable>
-        void call_every(std::chrono::microseconds interval, std::weak_ptr<void> caller, Callable&& f)
-        {
-            _call_every(interval, std::move(caller), std::forward<Callable>(f), event_loop::loop_id);
-        }
+        /** This invocation of `call_every` will return an EventHandler object from which the application can start and stop
+            the repeated event. It is NOT tied to the lifetime of the caller via a weak_ptr.
 
-        /** This overload of `call_every` will return an EventHandler object from which the application can start and
-           stop the repeated event. It is NOT tied to the lifetime of the caller via a weak_ptr. If the application
-           wants to defer start until explicitly calling EventHandler::start(), `start_immediately` should take a false
-           boolean.
+            Configurable parameters:
+                - start_immediately : will call ::event_add() before returning the ticker
+                - wait :
+                    - if FALSE (default behavior), the interval will not wait for the event to complete. will attempt to
+                        execute every `interval`, regardless of how long the event itself takes.
+                    - if TRUE, the interval will wait for the event to complete before beginning. It will wait the entire
+                        `interval` after finishing execution of the event before attempting execution again.
         */
         template <typename Callable>
-        [[nodiscard]] std::shared_ptr<ev_watcher> call_every(std::chrono::microseconds interval, Callable&& f)
+        [[nodiscard]] std::shared_ptr<ev_watcher> call_every(
+            std::chrono::microseconds interval, Callable&& f, bool start_immediately = true, bool wait = false)
         {
-            return _call_every(interval, std::forward<Callable>(f), event_loop::loop_id);
+            return _call_every(interval, std::forward<Callable>(f), event_loop::loop_id, start_immediately, wait);
         }
 
         template <std::invocable Callable>
@@ -254,11 +256,15 @@ namespace wshttp
 
         template <typename Callable>
         [[nodiscard]] std::shared_ptr<ev_watcher> _call_every(
-            std::chrono::microseconds interval, Callable&& f, caller_id_t _id)
+            std::chrono::microseconds interval,
+            Callable&& f,
+            caller_id_t _id,
+            bool start_immediately,
+            bool fixed_interval)
         {
             auto h = make_handler(_id);
 
-            h->init_event(loop(), interval, std::forward<Callable>(f));
+            h->init_event(loop(), interval, std::forward<Callable>(f), start_immediately, fixed_interval);
 
             return h;
         }

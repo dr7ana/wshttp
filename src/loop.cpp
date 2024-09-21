@@ -127,9 +127,14 @@ namespace wshttp
     }
 
     void ev_watcher::init_event(
-        const loop_ptr& _loop, std::chrono::microseconds _t, std::function<void()> task, bool one_off)
+        const loop_ptr& _loop,
+        std::chrono::microseconds _t,
+        std::function<void()> task,
+        bool one_off,
+        bool start_immediately,
+        bool fixed_interval)
     {
-        f = one_off ? std::move(task) : [this, func = std::move(task)]() mutable {
+        f = (one_off or not fixed_interval) ? std::move(task) : [this, func = std::move(task)]() mutable {
             func();
             event_del(ev.get());
             event_add(ev.get(), &interval);
@@ -160,7 +165,7 @@ namespace wshttp
             },
             this));
 
-        if (one_off and not start())
+        if ((one_off or start_immediately) and not start())
             log->critical("Failed to immediately start one-off event!");
     }
 

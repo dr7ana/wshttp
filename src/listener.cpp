@@ -7,21 +7,20 @@
 namespace wshttp
 {
     void listen_callbacks::accept_cb(
-        struct evconnlistener * /* evconn */,
+        struct evconnlistener* /* evconn */,
         evutil_socket_t fd,
-        struct sockaddr *addr,
+        struct sockaddr* addr,
         int /* addrlen */,
-        void *user_arg)
+        void* user_arg)
     {
-        auto &l = *static_cast<listener *>(user_arg);
+        auto& l = *static_cast<listener*>(user_arg);
         auto remote = ip_address{addr};
-        log->info("Inbound connection established (remote: {})", remote);
         l.create_inbound_session(std::move(remote), fd);
     }
 
-    void listen_callbacks::error_cb(struct evconnlistener * /* evconn */, void *user_arg)
+    void listen_callbacks::error_cb(struct evconnlistener* /* evconn */, void* user_arg)
     {
-        auto &l = *static_cast<listener *>(user_arg);
+        auto& l = *static_cast<listener*>(user_arg);
         log->warn("Evconnlistener error; closing listener...");
         return l.close_listener();
     }
@@ -29,18 +28,12 @@ namespace wshttp
     listener::~listener()
     {
         log->debug("Closing listener on port: {}", _local.port());
-        close_all();
-    }
-
-    void listener::handle_lst_opt(std::shared_ptr<ssl_creds> c)
-    {
-        log->debug("Listener creating I/O context...");
-        _ctx = app_context::make(IO::INBOUND, c);
     }
 
     void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)
     {
         assert(_ep.in_event_loop());
+        log->info("Inbound connection established (remote: {})", remote);
         _ep.call_get([&]() {
             auto [it, b] = _sessions.emplace(remote, nullptr);
 
@@ -51,7 +44,7 @@ namespace wshttp
                 return;
             }
 
-            it->second = _ep.template make_shared<session>(IO::INBOUND, *this, std::move(remote), fd);
+            it->second = _ep.template make_shared<inbound_session>(*this, std::move(remote), fd);
 
             if (not it->second)
             {
@@ -102,7 +95,7 @@ namespace wshttp
                 this,
                 LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE,
                 -1,
-                reinterpret_cast<sockaddr *>(&addr),
+                reinterpret_cast<sockaddr*>(&addr),
                 sizeof(sockaddr)),
             deleters::_evconnlistener{});
 
@@ -129,12 +122,11 @@ namespace wshttp
         log->info("TCP listener deployed on local bind: {}", _local);
     }
 
-    // SSL *listener::new_ssl(IO dir)
-    SSL *listener::new_ssl()
+    SSL* listener::new_ssl()
     {
         assert(_ep.in_event_loop());
         return _ep.call_get([&]() {
-            SSL *_ssl = SSL_new(*_ctx);
+            SSL* _ssl = SSL_new(_ep.inbound_ctx());
 
             if (!_ssl)
                 throw std::runtime_error{"Failed to create SSL/TLS: {}"_format(detail::current_error())};

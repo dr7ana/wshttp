@@ -7,13 +7,13 @@
 namespace wshttp
 {
     ssize_t stream_callbacks::file_read_callback(
-        nghttp2_session * /* session */,
+        nghttp2_session* /* session */,
         int32_t /* stream_id */,
-        uint8_t *buf,
+        uint8_t* buf,
         size_t length,
-        uint32_t *data_flags,
-        nghttp2_data_source *source,
-        void * /* user_data */)
+        uint32_t* data_flags,
+        nghttp2_data_source* source,
+        void* /* user_data */)
     {
         auto fd = source->fd;
         ssize_t ret{-1};
@@ -36,7 +36,7 @@ namespace wshttp
         return ret;
     }
 
-    stream::stream(session &s, const session_ptr &sess, int32_t id) : _s{s}, _session{sess}, _id{id}
+    stream::stream(inbound_session& s, const session_ptr& sess, int32_t id) : _s{s}, _session{sess}, _id{id}
     {
         _session = s._ep.template shared_ptr<nghttp2_session>(sess.get(), deleters::_session{});
     }

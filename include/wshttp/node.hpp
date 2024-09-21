@@ -6,17 +6,19 @@ namespace wshttp
 {
     struct uri;
     class endpoint;
+    class outbound_session;
     class app_context;
 
     class node
     {
-        friend class session;
+        friend class outbound_session;
         friend class endpoint;
 
         template <typename... Opt>
         explicit node(endpoint& e, uri _u, Opt&&... opts) : _ep{e}, _uri{std::move(_u)}
         {
-            _ctx = std::make_shared<app_context>(IO::OUTBOUND, std::forward<Opt>(opts)...);
+            if (sizeof...(opts))
+                handle_nd_opts(std::forward<Opt>(opts)...);
             _init_internals();
             create_outbound_session();
         }
@@ -24,33 +26,30 @@ namespace wshttp
       public:
         node() = delete;
 
-        ~node() = default;
-
-        template <typename... Opt>
-        static std::shared_ptr<node> make(endpoint& e, uri _u, Opt&&... opts)
-        {
-            return std::shared_ptr<node>{new node{e, std::move(_u), std::forward<Opt>(opts)...}};
-        }
+        ~node();
 
         std::string_view href() const { return _uri.href(); }
 
       private:
         endpoint& _ep;
-        ip_address _local;
+        std::optional<ip_address> _local;
         int _fd{-1};
 
         uri _uri;
 
-        std::shared_ptr<app_context> _ctx;
+        // key: host, value: session ptr
+        std::unordered_map<std::string, std::shared_ptr<outbound_session>> _sessions;
 
         void _init_internals();
 
         void handle_nd_opts(ip_address local);
 
       protected:
-        void create_outbound_session();
-
         SSL* new_ssl();
+
+        void close_session(std::string host);
+
+        void create_outbound_session();
     };
 }  //  namespace wshttp
 

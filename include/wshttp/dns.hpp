@@ -5,7 +5,13 @@
 namespace wshttp
 {
     class endpoint;
-}
+
+    namespace concepts
+    {
+        template <typename T>
+        concept dns_base = std::same_as<T, ::evdns_base>;
+    }  //  namespace concepts
+}  //  namespace wshttp
 
 namespace wshttp::dns
 {
@@ -23,6 +29,18 @@ namespace wshttp::dns
 
         int main_lookup(struct evdns_server_request* req, struct evdns_server_question* q);
 
+        template <concepts::dns_base T>
+        operator const T*() const
+        {
+            return _evdns.get();
+        }
+
+        template <concepts::dns_base T>
+        operator T*()
+        {
+            return _evdns.get();
+        }
+
       private:
         wshttp::endpoint& _ep;
 
@@ -37,4 +55,4 @@ namespace wshttp::dns
 
         void register_nameserver(uint16_t port);
     };
-}  //  namespace wshttp::dns
+}  // namespace wshttp::dns

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dns.hpp"
 #include "format.hpp"
 #include "listener.hpp"
 #include "loop.hpp"
@@ -16,45 +17,56 @@ namespace wshttp
         class server;
     }
 
-    template <typename... Opt>
-    static constexpr void check_for_ssl_creds()
-    {
-        if constexpr ((std::is_same_v<std::shared_ptr<ssl_creds>, std::remove_cvref_t<Opt>> || ...))
-        {
-            static_assert(
-                (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<ssl_creds>>) == 1,
-                "Node listen/connect require exactly one std::shared_ptr<ssl_creds> argument");
-        }
-    }
-
     class endpoint final
     {
-        friend class session;
-        friend class stream;
-        friend class listener;
-        friend struct listen_callbacks;
+        friend class inbound_session;
+        friend class outbound_session;
+        friend class session_base;
         friend class node;
+        friend class listener;
+        friend class stream;
+        friend class event_loop;
         friend class dns::server;
 
-      public:
-        endpoint();
-        explicit endpoint(std::shared_ptr<event_loop> ev_loop);
-        endpoint(const endpoint& c) : endpoint{c._loop} {}
+        template <typename... Opt>
+        explicit endpoint(std::shared_ptr<event_loop> ev_loop, Opt&&... opts)
+            : _loop{std::move(ev_loop)},
+              _dns{_loop->template make_shared<dns::server>(*this)},
+              client_id{++next_client_id}
+        {
+            require_ssl_creds<Opt...>();
 
+            if constexpr (sizeof...(opts))
+                handle_ep_opt(std::forward<Opt>(opts)...);
+
+            _dns->initialize();
+            log->trace("Client endpoint created with initialized event loop!");
+        }
+
+      public:
         endpoint& operator=(endpoint) = delete;
         endpoint& operator=(endpoint&&) = delete;
 
-        [[nodiscard]] static std::shared_ptr<endpoint> make();
-        [[nodiscard]] static std::shared_ptr<endpoint> make(std::shared_ptr<event_loop> ev_loop);
+        template <typename... Opt>
+        [[nodiscard]] static std::shared_ptr<endpoint> make(Opt&&... args)
+        {
+            return endpoint::make(event_loop::make(), std::forward<Opt>(args)...);
+        }
+
+        template <typename... Opt>
+        [[nodiscard]] static std::shared_ptr<endpoint> make(std::shared_ptr<event_loop> ev_loop, Opt&&... args)
+        {
+            return ev_loop->template make_shared<endpoint>(std::move(ev_loop), std::forward<Opt>(args)...);
+        }
 
         ~endpoint();
-
-        [[nodiscard]] std::shared_ptr<endpoint> create_linked_endpoint();
 
       private:
         std::shared_ptr<event_loop> _loop;
 
         std::shared_ptr<dns::server> _dns;
+
+        std::shared_ptr<app_context> _ctx;
 
         const caller_id_t client_id;
         static caller_id_t next_client_id;
@@ -68,11 +80,8 @@ namespace wshttp
         std::atomic<bool> _close_immediately{false};
 
       public:
-        template <typename... Opt>
-        bool listen(uint16_t port, Opt&&... opts)
+        bool listen(uint16_t port)
         {
-            check_for_ssl_creds<Opt...>();
-
             return call_get([&]() {
                 auto [itr, b] = _listeners.try_emplace(port, nullptr);
 
@@ -80,7 +89,7 @@ namespace wshttp
                     throw std::invalid_argument{
                         "Cannot create tcp-listener at port {} -- listener already exists!"_format(port)};
 
-                itr->second = make_shared<listener>(*this, port, std::forward<Opt>(opts)...);
+                itr->second = make_shared<listener>(*this, port);
 
                 if (not itr->second)
                     throw std::runtime_error{"TCP listener construction failed!"};
@@ -92,8 +101,6 @@ namespace wshttp
         template <typename... Opt>
         bool connect(std::string_view url, Opt&&... opts)
         {
-            check_for_ssl_creds<Opt...>();
-
             return call_get([&]() {
                 auto _uri = uri::parse(url);
                 if (not _uri)
@@ -162,5 +169,20 @@ namespace wshttp
         bool in_event_loop() const { return _loop->in_event_loop(); }
 
         void shutdown_endpoint();
+
+        SSL_CTX* inbound_ctx();
+
+        SSL_CTX* outbound_ctx();
+
+      private:
+        void handle_ep_opt(std::shared_ptr<ssl_creds> c);
+
+        template <typename... Opt>
+        static constexpr void require_ssl_creds()
+        {
+            static_assert(
+                (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<ssl_creds>>) == 1,
+                "Endpoint construction requires exactly one std::shared_ptr<ssl_creds> argument");
+        }
     };
 }  //  namespace wshttp
