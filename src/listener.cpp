@@ -23,19 +23,19 @@ namespace wshttp
     {
         auto &l = *static_cast<listener *>(user_arg);
         log->warn("Evconnlistener error; closing listener...");
-        return l._ep.close_listener(l._port);
+        return l.close_listener();
     }
 
     listener::~listener()
     {
-        log->debug("Closing listener on port: {}", _port);
+        log->debug("Closing listener on port: {}", _local.port());
         close_all();
     }
 
     void listener::handle_lst_opt(std::shared_ptr<ssl_creds> c)
     {
         log->debug("Listener creating I/O context...");
-        io_ctx = app_context::make_pair(c);
+        _ctx = app_context::make(IO::INBOUND, c);
     }
 
     void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)
@@ -65,9 +65,15 @@ namespace wshttp
     {
         assert(_ep.in_event_loop());
         _ep.call([&]() {
-            log->info("listener (port:{}) closing all sessions...", _port);
+            log->info("listener (port:{}) closing all sessions...", _local.port());
             _sessions.clear();
         });
+    }
+
+    void listener::close_listener()
+    {
+        assert(_ep.in_event_loop());
+        _ep.call_soon([&]() { _ep.close_listener(_local.port()); });
     }
 
     void listener::close_session(ip_address remote)
@@ -87,7 +93,7 @@ namespace wshttp
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port = enc::host_to_big(_port);
+        addr.sin_port = enc::host_to_big(_local.port());
 
         _tcp = _ep.template shared_ptr<struct evconnlistener>(
             evconnlistener_new_bind(
@@ -116,27 +122,24 @@ namespace wshttp
 
         if (getsockname(_fd, &_laddr, &len) < 0)
             throw std::runtime_error{"Failed to get local socket address for tcp listener on port {}: {}"_format(
-                _port, detail::current_error())};
+                _local.port(), detail::current_error())};
 
         _local = ip_address{&_laddr};
-        log->info("TCP listener has local bind: {}", _local);
+
+        log->info("TCP listener deployed on local bind: {}", _local);
     }
 
-    SSL *listener::new_ssl(IO dir)
+    // SSL *listener::new_ssl(IO dir)
+    SSL *listener::new_ssl()
     {
         assert(_ep.in_event_loop());
         return _ep.call_get([&]() {
-            SSL *_ssl;
-            auto is_inbound = dir == IO::INBOUND;
-
-            auto &ctx = is_inbound ? io_ctx.first : io_ctx.second;
-            _ssl = SSL_new(ctx->_ctx.get());
+            SSL *_ssl = SSL_new(*_ctx);
 
             if (!_ssl)
-                throw std::runtime_error{"Failed to create SSL/TLS for {}bound: {}"_format(
-                    is_inbound ? "in" : "out", detail::current_error())};
+                throw std::runtime_error{"Failed to create SSL/TLS: {}"_format(detail::current_error())};
 
-            log->trace("Created SSL/TLS for {}bound...", is_inbound ? "in" : "out");
+            log->trace("Created SSL/TLS...");
 
             return _ssl;
         });

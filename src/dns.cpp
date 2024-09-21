@@ -71,7 +71,7 @@ namespace wshttp
 
         void server::initialize()
         {
-            return _ep.call_get([&]() {
+            _ep.call_get([&]() {
                 sockaddr_in _bind;
 
                 _udp_sock = socket(PF_INET, SOCK_DGRAM, 0);
@@ -80,14 +80,14 @@ namespace wshttp
                     throw std::runtime_error{"UDP socket is fucked"};
 
                 if (auto rv = evutil_make_socket_nonblocking(_udp_sock); rv < 0)
-                    throw std::runtime_error{"Failed to non-block UDP socket: {}"_format(strerror(errno))};
+                    throw std::runtime_error{"Failed to non-block UDP socket: {}"_format(detail::current_error())};
 
                 _bind.sin_family = AF_INET;
                 _bind.sin_addr.s_addr = INADDR_ANY;
                 _bind.sin_port = enc::host_to_big(defaults::DNS_PORT);
 
                 if (auto rv = bind(_udp_sock, reinterpret_cast<sockaddr*>(&_bind), sizeof(sockaddr)); rv < 0)
-                    throw std::runtime_error{"DNS server failed to bind UDP port: {}"_format(strerror(errno))};
+                    throw std::runtime_error{"DNS server failed to bind UDP port: {}"_format(detail::current_error())};
 
                 _udp_bind = _ep.template shared_ptr<evdns_server_port>(
                     evdns_add_server_port_with_base(
@@ -95,7 +95,7 @@ namespace wshttp
                     deleters::_evdns_port{});
 
                 if (not _udp_bind)
-                    throw std::runtime_error{"DNS server failed to add UDP port: {}"_format(strerror(errno))};
+                    throw std::runtime_error{"DNS server failed to add UDP port: {}"_format(detail::current_error())};
 
                 log->debug("DNS server successfully configured UDP socket!");
 

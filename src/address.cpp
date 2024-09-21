@@ -52,11 +52,16 @@ namespace wshttp
         enc::big_to_host_inplace(addr);
     }
 
-    ipv4::operator in_addr() const
+    in_addr ipv4::to_in4() const
     {
         in_addr a;
         a.s_addr = enc::host_to_big(addr);
         return a;
+    }
+
+    bool ipv4::is_anyaddr() const
+    {
+        return *this == ipv4_anyaddr;
     }
 
     std::string ipv4::to_string() const
@@ -80,6 +85,11 @@ namespace wshttp
         detail::parse_addr(AF_INET6, &addr, str);
         for (int i = 0; i < 8; ++i)
             enc::big_to_host_inplace(addr[i]);
+    }
+
+    bool ipv6::is_anyaddr() const
+    {
+        return *this == ipv6_anyaddr;
     }
 
     in6_addr ipv6::to_in6() const
@@ -125,6 +135,11 @@ namespace wshttp
             throw std::runtime_error{"Failed to understand incoming address sa_family"};
 
         enc::big_to_host_inplace(_port);
+    }
+
+    bool ip_address::is_anyaddr() const
+    {
+        return (_is_v4 ? _ipv4().is_anyaddr() : _ipv6().is_anyaddr()) and not _port;
     }
 
     std::string ip_address::to_string() const

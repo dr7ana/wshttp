@@ -89,7 +89,9 @@ namespace wshttp
 
         static constexpr bool to_string_formattable = true;
 
-        explicit operator in_addr() const;
+        in_addr to_in4() const;
+
+        bool is_anyaddr() const;
 
         constexpr auto operator<=>(const ipv4& a) const { return addr <=> a.addr; }
 
@@ -123,6 +125,8 @@ namespace wshttp
 
         in6_addr to_in6() const;
 
+        bool is_anyaddr() const;
+
         std::string to_string() const;
         static constexpr bool to_string_formattable = true;
 
@@ -131,9 +135,14 @@ namespace wshttp
         constexpr bool operator==(const ipv6& a) const { return (addr <=> a.addr) == 0; }
     };
 
+    inline constexpr ipv4 ipv4_anyaddr(0, 0, 0, 0);
+
+    inline constexpr ipv6 ipv6_anyaddr(0, 0, 0, 0, 0, 0, 0, 0);
+
     struct ip_address
     {
-        constexpr ip_address() = default;
+        constexpr ip_address(uint16_t p = 0) : _ip{}, _port{p} {}
+
         explicit ip_address(struct sockaddr* in);
 
         template <concepts::ip_type T>
@@ -177,6 +186,8 @@ namespace wshttp
         friend struct std::hash<ip_address>;
 
       public:
+        bool is_anyaddr() const;
+
         void set_port(uint16_t p) { _port = p; }
 
         uint16_t port() { return _port; }
@@ -187,6 +198,10 @@ namespace wshttp
 
         auto operator<=>(const ip_address& a) const { return std::tie(_ip, _port) <=> std::tie(a._ip, a._port); }
         bool operator==(const ip_address& a) const { return (*this <=> a) == 0; }
+
+        operator in_addr() const { return _ipv4().to_in4(); }
+
+        operator in6_addr() const { return _ipv6().to_in6(); }
     };
 
     struct path

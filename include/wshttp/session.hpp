@@ -27,7 +27,7 @@ namespace wshttp
         session(session&&) = delete;
         session& operator=(session&&) = delete;
 
-        ~session() = default;
+        ~session();
 
         static std::shared_ptr<session> make(IO dir, listener& l, ip_address remote, evutil_socket_t fd);
 

@@ -33,7 +33,7 @@ namespace wshttp
         friend class stream;
         friend class listener;
         friend struct listen_callbacks;
-        friend class node_old;
+        friend class node;
         friend class dns::server;
 
       public:
@@ -63,9 +63,7 @@ namespace wshttp
         std::unordered_map<uint16_t, std::shared_ptr<listener>> _listeners;
 
         // local nodes managing outbound https connections
-        std::unordered_map<std::string, std::shared_ptr<node_old>> _nodes;
-
-        std::unordered_map<std::string, std::shared_ptr<listener>> _outbounds;
+        std::unordered_map<std::string, std::shared_ptr<node>> _nodes;
 
         std::atomic<bool> _close_immediately{false};
 
@@ -85,9 +83,8 @@ namespace wshttp
                 itr->second = make_shared<listener>(*this, port, std::forward<Opt>(opts)...);
 
                 if (not itr->second)
-                    throw std::runtime_error{"TCP listener construction is fucked"};
+                    throw std::runtime_error{"TCP listener construction failed!"};
 
-                log->critical("Endpoint deployed tcp-listener on port {}", port);
                 return true;
             });
         }
@@ -108,12 +105,11 @@ namespace wshttp
                     throw std::invalid_argument{
                         "Cannot create outbound node for input: {} -- node already exists!"_format(url)};
 
-                itr->second = make_shared<node_old>(*this, std::move(_uri), std::forward<Opt>(opts)...);
+                itr->second = make_shared<node>(*this, std::move(_uri), std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"Node construction is fucked"};
 
-                log->critical("Endpoint deployed node for outbound to uri [{}]", url);
                 return true;
             });
         }

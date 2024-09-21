@@ -190,11 +190,16 @@ namespace wshttp
         _init_internals();
     }
 
+    session::~session()
+    {
+        log->trace("Session (path: {}) deleted...", _path);
+    }
+
     void session::_init_internals()
     {
         assert(_ep.in_event_loop());
         _ep.call_get([&]() {
-            _ssl.reset(_lst.new_ssl(_dir));
+            _ssl.reset(_lst.new_ssl());
 
             if (not _ssl)
                 throw std::runtime_error{"Failed to emplace SSL pointer for new session"};
@@ -203,12 +208,12 @@ namespace wshttp
                 _ep._loop->loop().get(),
                 _fd,
                 _ssl.get(),
-                is_inbound() ? BUFFEREVENT_SSL_ACCEPTING : BUFFEREVENT_SSL_CONNECTING,
+                BUFFEREVENT_SSL_ACCEPTING,
                 BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
 
             if (not _bev)
-                throw std::runtime_error{"Failed to create bufferevent socket for {}bound TLS session: {}"_format(
-                    is_inbound() ? "in" : "out", detail::current_error())};
+                throw std::runtime_error{
+                    "Failed to create bufferevent socket for inbound TLS session: {}"_format(detail::current_error())};
 
             bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 
