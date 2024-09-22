@@ -1,10 +1,10 @@
 #pragma once
 
-#include <fmt/core.h>
+// #include <fmt/core.h>
 #include <fmt/format.h>
-#include <fmt/ranges.h>
-#include <spdlog/cfg/env.h>
-#include <spdlog/common.h>
+// #include <fmt/ranges.h>
+// #include <spdlog/cfg/env.h>
+// #include <spdlog/common.h>
 #include <spdlog/sinks/dist_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
@@ -23,7 +23,7 @@ namespace wshttp
     {
         // Types can opt-in to being fmt-formattable by ensuring they have a ::to_string() method defined
         template <typename T>
-        concept to_string_formattable = requires(T a) {
+        concept to_string_formattable = T::to_string_formattable && requires(T a) {
             {
                 a.to_string()
             } -> std::convertible_to<std::string_view>;
@@ -159,6 +159,7 @@ namespace wshttp
     // global logger
     extern std::shared_ptr<Logger> log;
     extern std::shared_ptr<spdlog::sinks::dist_sink_mt> sink;
+
 }  //  namespace wshttp
 
 namespace fmt

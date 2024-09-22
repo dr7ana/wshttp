@@ -46,9 +46,25 @@ namespace wshttp
             size_t size() const { return _hdrs.size(); }
             bool end() const { return _index == size() - 1; }
 
+            void print() const;
+
             void add_field(FIELD f, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
 
             void add_pair(ustring_view name, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
+
+            std::pair<ustring_view, ustring_view> operator[](size_t i)
+            {
+                assert(i < _hdrs.size());
+                auto& h = _hdrs[i];
+                return {ustring_view{h.name, h.namelen}, ustring_view{h.value, h.valuelen}};
+            }
+
+            const std::pair<ustring_view, ustring_view> operator[](size_t i) const
+            {
+                assert(i < _hdrs.size());
+                auto& h = _hdrs[i];
+                return {ustring_view{h.name, h.namelen}, ustring_view{h.value, h.valuelen}};
+            }
 
             template <concepts::nghttp2_nv_type T>
             operator const T*() const

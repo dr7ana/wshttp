@@ -13,6 +13,13 @@ namespace wshttp
     {
         friend class outbound_session;
         friend class endpoint;
+        friend class event_loop;
+
+        explicit node(endpoint& e, uri _u) : _ep{e}, _uri{std::move(_u)}
+        {
+            _init_internals();
+            create_outbound_session();
+        }
 
         template <typename... Opt>
         explicit node(endpoint& e, uri _u, Opt&&... opts) : _ep{e}, _uri{std::move(_u)}

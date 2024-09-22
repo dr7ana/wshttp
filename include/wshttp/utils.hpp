@@ -21,6 +21,7 @@ extern "C"
 }
 
 #include <array>
+#include <cassert>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -72,7 +73,7 @@ namespace wshttp
 
         std::chrono::steady_clock::time_point get_time();
 
-        std::string translate_req_type(int t);
+        std::string_view translate_req_type(int t);
 
         std::string localhost_ip(uint16_t port);
 

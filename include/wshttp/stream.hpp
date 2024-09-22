@@ -42,6 +42,10 @@ namespace wshttp
 
         uri _req;
 
+        int recv_data(ustring data);
+
+        int recv_path_header(ustring_view path);
+
         int recv_header(req::headers hdr);
 
         int recv_frame();

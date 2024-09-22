@@ -19,7 +19,9 @@ namespace wshttp
         friend struct session_callbacks;
 
       protected:
-        session_base(endpoint& e, evutil_socket_t f, path _p) : _ep{e}, _fd{f}, _path{std::move(_p)} {}
+        session_base(endpoint& e, evutil_socket_t f, path _p, bool d)
+            : _ep{e}, _fd{f}, _path{std::move(_p)}, _is_outbound{d}
+        {}
 
         endpoint& _ep;
 
@@ -33,13 +35,15 @@ namespace wshttp
         session_ptr _session;
         std::unordered_map<uint32_t, std::shared_ptr<stream>> _streams;
 
+        bool _is_outbound{false};
+
         void read_session_data();
 
         void write_session_data();
 
         void send_session_data();
 
-        nghttp2_ssize send_hook(ustring_view data);
+        nghttp2_ssize send_hook(ustring data);
 
         void config_send_initial();
 
@@ -56,6 +60,9 @@ namespace wshttp
         virtual int stream_close_hook(int32_t stream_id, uint32_t error_code = 0) = 0;
 
         virtual void close_session() = 0;
+
+        bool is_inbound() const { return !_is_outbound; }
+        bool is_outbound() const { return _is_outbound; }
 
       public:
         virtual ~session_base() = default;
@@ -93,7 +100,7 @@ namespace wshttp
         inbound_session() = delete;
 
         inbound_session(listener& l, ip_address remote, evutil_socket_t fd)
-            : session_base{l._ep, fd, path{{}, std::move(remote)}}, _lst{l}
+            : session_base{l._ep, fd, path{{}, std::move(remote)}, false}, _lst{l}
         {
             _init_internals();
         }
@@ -138,7 +145,9 @@ namespace wshttp
 
       public:
         outbound_session(node& n, evutil_socket_t fd, std::optional<ip_address> local = std::nullopt)
-            : session_base{n._ep, fd, path{local ? std::move(*local) : ip_address{}, {}}}, _n{n}, _host{_n._uri.host()}
+            : session_base{n._ep, fd, path{local ? std::move(*local) : ip_address{}, {}}, true},
+              _n{n},
+              _host{_n._uri.host()}
         {
             _init_internals();
         }

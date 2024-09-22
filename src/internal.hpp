@@ -50,6 +50,13 @@ namespace wshttp
 
     namespace detail
     {
+        template <typename SV>
+            requires std::same_as<SV, ustring_view> || std::same_as<SV, bstring_view>
+        inline std::string_view to_sv(SV x)
+        {
+            return {reinterpret_cast<const char*>(x.data()), x.size()};
+        }
+
         inline const char* current_error()
         {
             return ERR_error_string(ERR_get_error(), NULL);
@@ -126,8 +133,8 @@ namespace wshttp
 
     struct session_callbacks
     {
-        static void server_event_cb(struct bufferevent* bev, short events, void* user_arg);
-        static void client_event_cb(struct bufferevent* bev, short events, void* user_arg);
+        // static void server_event_cb(struct bufferevent* bev, short events, void* user_arg);
+        static void event_cb(struct bufferevent* bev, short events, void* user_arg);
         static void read_cb(struct bufferevent* bev, void* user_arg);
         static void write_cb(struct bufferevent* bev, void* user_arg);
 
@@ -166,6 +173,71 @@ namespace wshttp
             uint32_t* data_flags,
             nghttp2_data_source* source,
             void* user_data);
+    };
+
+    struct buffer_printer
+    {
+        std::basic_string_view<std::byte> buf;
+
+        // Constructed from any type of string_view<T> for a single-byte T (char, std::byte, uint8_t, etc.)
+        template <concepts::basic_char T>
+        explicit buffer_printer(std::basic_string_view<T> buf)
+            : buf{reinterpret_cast<const std::byte*>(buf.data()), buf.size()}
+        {}
+
+        // Constructed from any type of lvalue string<T> for a single-byte T (char, std::byte, uint8_t, etc.
+        template <concepts::basic_char T>
+        explicit buffer_printer(const std::basic_string<T>& buf) : buffer_printer(std::basic_string_view<T>{buf})
+        {}
+
+        // *Not* constructable from a string<T> rvalue (no taking ownership)
+        template <concepts::basic_char T>
+        explicit buffer_printer(std::basic_string<T>&& buf) = delete;
+
+        // Constructable from a (T*, size) argument pair, for byte-sized T's.
+        template <concepts::basic_char T>
+        explicit buffer_printer(const T* data, size_t size) : buffer_printer(std::basic_string_view<T>{data, size})
+        {}
+
+        std::string to_string() const
+        {
+            auto& b = buf;
+            std::string out;
+            auto ins = std::back_inserter(out);
+            fmt::format_to(ins, "Buffer[{}/{:#x} bytes]:", b.size(), b.size());
+
+            for (size_t i = 0; i < b.size(); i += 32)
+            {
+                fmt::format_to(ins, "\n{:04x} ", i);
+
+                size_t stop = std::min(b.size(), i + 32);
+                for (size_t j = 0; j < 32; j++)
+                {
+                    auto k = i + j;
+                    if (j % 4 == 0)
+                        out.push_back(' ');
+                    if (k >= stop)
+                        out.append("  ");
+                    else
+                        fmt::format_to(ins, "{:02x}", std::to_integer<uint_fast16_t>(b[k]));
+                }
+                out.append("  ┃");
+                for (size_t j = i; j < stop; j++)
+                {
+                    auto c = std::to_integer<char>(b[j]);
+                    if (c == 0x00)
+                        out.append("∅");
+                    else if (c < 0x20 || c > 0x7e)
+                        out.append("·");
+                    else
+                        out.push_back(c);
+                }
+                out.append("┃");
+            }
+            return out;
+        }
+
+        static constexpr bool to_string_formattable = true;
     };
 
 }  // namespace wshttp

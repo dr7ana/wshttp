@@ -86,7 +86,6 @@ namespace wshttp
         {}
 
         std::string to_string() const;
-
         static constexpr bool to_string_formattable = true;
 
         in_addr to_in4() const;
@@ -195,6 +194,7 @@ namespace wshttp
         bool is_ipv4() const { return _is_v4; }
 
         std::string to_string() const;
+        static constexpr bool to_string_formattable = true;
 
         auto operator<=>(const ip_address& a) const { return std::tie(_ip, _port) <=> std::tie(a._ip, a._port); }
         bool operator==(const ip_address& a) const { return (*this <=> a) == 0; }
@@ -227,6 +227,7 @@ namespace wshttp
         const ip_address& remote() const { return _remote; }
 
         std::string to_string() const;
+        static constexpr bool to_string_formattable = true;
     };
 
     // TODO: unify address type sinto this main container

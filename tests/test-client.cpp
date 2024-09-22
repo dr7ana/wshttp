@@ -45,6 +45,7 @@ int main(int argc, char* argv[])
         else
             ep->listen(5544);
         // ep->test_parse_method("https://www.google.com");
+        ep->connect("https://www.google.com");
     }
     catch (const std::exception& e)
     {

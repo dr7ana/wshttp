@@ -48,14 +48,34 @@ namespace wshttp
         log->debug("Outbound stream (ID: {}) created!", _id);
     }
 
+    int stream::recv_data(ustring data)
+    {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        log->info("Stream (ID:{}) received data: {}", _id, buffer_printer{data});
+        return 0;
+    }
+
+    int stream::recv_path_header(ustring_view path)
+    {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        _req = uri::parse(path);
+        return _req ? 0 : NGHTTP2_ERR_CALLBACK_FAILURE;
+    }
+
     int stream::recv_header(req::headers hdr)
     {
-        _req = uri::parse(hdr.current().second);
-        return _req ? 0 : -1;
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        hdr.print();
+        return 0;
     }
 
     int stream::recv_frame()
     {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         if (not _req)
         {
             log->warn("Stream received request before header!");
@@ -83,6 +103,8 @@ namespace wshttp
 
     int stream::send_error()
     {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         if (pipe(_pipes.data()) != 0)
         {
             log->warn("Failed to create pipes to send error! Resetting stream");
@@ -117,6 +139,8 @@ namespace wshttp
 
     int stream::send_response(req::headers hdrs)
     {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         nghttp2_data_provider2 _prv{.source = {_fd}, .read_callback = stream_callbacks::file_read_callback};
 
         if (auto rv = nghttp2_submit_response2(_session.get(), _id, hdrs, hdrs.size(), &_prv); rv != 0)

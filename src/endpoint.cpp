@@ -2,6 +2,7 @@
 
 // #include "dns.hpp"
 #include "internal.hpp"
+#include "request.hpp"
 
 namespace wshttp
 {

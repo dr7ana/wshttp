@@ -4,7 +4,7 @@
 #include "wshttp/context.hpp"
 #include "wshttp/dns.hpp"
 #include "wshttp/endpoint.hpp"
-#include "wshttp/format.hpp"
+// #include "wshttp/format.hpp"
 #include "wshttp/listener.hpp"
 #include "wshttp/loop.hpp"
 #include "wshttp/node.hpp"

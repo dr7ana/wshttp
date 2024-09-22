@@ -86,6 +86,15 @@ namespace wshttp::req
         return current();
     }
 
+    void headers::print() const
+    {
+        for (size_t i = 0; i < _hdrs.size(); ++i)
+        {
+            auto [n, v] = (*this)[i];
+            log->info("Type: {}, Value: {}", detail::to_sv(n), buffer_printer{v});
+        }
+    }
+
     void headers::add_field(FIELD f, ustring_view val, nghttp2_nv_flag flags)
     {
         _hdrs.push_back(make_header(f, val, flags));

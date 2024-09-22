@@ -6,10 +6,14 @@
 
 namespace wshttp
 {
+    static dns::server& _get_dns(void* user_arg)
+    {
+        return *static_cast<dns::server*>(user_arg);
+    }
+
     void dns_callbacks::server_cb(struct evdns_server_request* req, void* user_data)
     {
-        auto* server = reinterpret_cast<wshttp::dns::server*>(user_data);
-        assert(server);
+        auto& server = _get_dns(user_data);
 
         detail::print_dns_req(req);
 
@@ -25,7 +29,7 @@ namespace wshttp
                 case EVDNS_TYPE_A:
                 case EVDNS_TYPE_AAAA:
                 case EVDNS_TYPE_CNAME:
-                    r = server->main_lookup(req, q);
+                    r = server.main_lookup(req, q);
                     break;
                 case EVDNS_TYPE_PTR:
                 case EVDNS_TYPE_SOA:
@@ -56,7 +60,7 @@ namespace wshttp
         server::server(wshttp::endpoint& e) : _ep{e}
         {
             _evdns = _ep.template shared_ptr<evdns_base>(
-                evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_NAMESERVERS_NO_DEFAULT), deleters::_evdns{});
+                evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_INITIALIZE_NAMESERVERS), deleters::_evdns{});
 
             evdns_set_log_fn([](int is_warning, const char* msg) {
                 if (is_warning)
@@ -99,33 +103,6 @@ namespace wshttp
 
                 log->debug("DNS server successfully configured UDP socket!");
 
-                _tcp_listener = _ep.template shared_ptr<struct evconnlistener>(
-                    evconnlistener_new_bind(
-                        _ep._loop->loop().get(),
-                        nullptr,
-                        nullptr,
-                        LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE,
-                        -1,
-                        reinterpret_cast<sockaddr*>(&_bind),
-                        sizeof(sockaddr)),
-                    deleters::_evconnlistener{});
-
-                if (not _tcp_listener)
-                {
-                    auto err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
-                    throw std::runtime_error{"TCP listener construction is fucked: {}"_format(err)};
-                }
-
-                // we don't need to hold on to this one since we pass LEV_OPT_CLOSE_ON_FREE in creating the
-                // evconnlistener, which closes the underlying socket when the listener is freed
-                auto* _tcp_bind = evdns_add_server_port_with_listener(
-                    _ep._loop->loop().get(), _tcp_listener.get(), 0, dns_callbacks::server_cb, this);
-
-                if (not _tcp_bind)
-                    throw std::runtime_error{"DNS server failed to bind server TCP port!"};
-
-                log->debug("DNS server successfully configured TCP socket!");
-
                 register_nameserver(defaults::DNS_PORT);
             });
         }
@@ -139,9 +116,10 @@ namespace wshttp
 
         int server::main_lookup(struct evdns_server_request* req, struct evdns_server_question* q)
         {
-            log->critical("DNS server received {} req for: {}", detail::translate_req_type(q->type), q->name);
+            assert(_ep.in_event_loop());
 
-            auto name = std::string_view{q->name};
+            auto name = std::string_view{q->name}, type = detail::translate_req_type(q->type);
+            log->info("DNS server received {} req for: {}", type, name);
 
             const char* res;
             auto is_v6 = q->type == EVDNS_TYPE_AAAA;

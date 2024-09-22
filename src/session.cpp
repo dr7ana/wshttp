@@ -20,12 +20,12 @@ namespace wshttp
         return *static_cast<T*>(user_arg);
     }
 
-    void session_callbacks::server_event_cb(struct bufferevent* /* bev */, short events, void* user_arg)
+    void session_callbacks::event_cb(struct bufferevent* /* bev */, short events, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
-        auto& s = _get_session<inbound_session>(user_arg);
+        auto& s = _get_session(user_arg);
 
-        auto msg = "Inbound session (path: {})"_format(s.session_path());
+        auto msg = "{}bound session (path: {})"_format(s.is_outbound() ? "Out" : "In", s.session_path());
 
         if (events & BEV_EVENT_CONNECTED)
         {
@@ -57,49 +57,6 @@ namespace wshttp
         s.close_session();
     }
 
-    void session_callbacks::client_event_cb(struct bufferevent* /* bev */, short events, void* user_arg)
-    {
-        log->trace("{} called", __PRETTY_FUNCTION__);
-        auto& s = _get_session<outbound_session>(user_arg);
-
-        auto msg = "Outbound session (path: {})"_format(s.session_path());
-
-        if (events & BEV_EVENT_CONNECTED)
-        {
-            const unsigned char* _alpn = nullptr;
-            unsigned int _alpn_len = 0;
-
-            SSL_get0_alpn_selected(s._ssl.get(), &_alpn, &_alpn_len);
-
-            if (not _alpn_len or defaults::ALPN.compare({_alpn, _alpn_len}) == 0)
-            {
-                log->info(
-                    "{} {} alpn; initializing...", msg, _alpn_len ? "successfully negotiated" : "did not negotiate");
-                return s.config_send_initial();
-            }
-
-            log->warn(
-                "{} failed to negotiate 'h2' alpn! Received: {}",
-                msg,
-                std::string_view{reinterpret_cast<const char*>(_alpn), _alpn_len});
-        }
-        else if (events & BEV_EVENT_EOF)
-        {
-            //
-        }
-        else if (events & BEV_EVENT_ERROR)
-        {
-            //
-        }
-        else if (events & BEV_EVENT_TIMEOUT)
-        {
-            //
-        }
-
-        log->warn("{}: {}", msg, detail::current_error());
-        s.close_session();
-    }
-
     void session_callbacks::read_cb(struct bufferevent* /* bev */, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -115,11 +72,11 @@ namespace wshttp
     }
 
     nghttp2_ssize session_callbacks::send_callback(
-        nghttp2_session* /* session */, const uint8_t* data, size_t length, int /* flags */, void* user_arg)
+        nghttp2_session* /* session */, const uint8_t* data, size_t datalen, int /* flags */, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
-        return s.send_hook(ustring_view{data, length});
+        return s.send_hook(ustring{data, datalen});
     }
 
     // int session_callbacks::on_frame_send_callback(nghttp2_session *session, const nghttp2_frame *frame, void
@@ -129,12 +86,18 @@ namespace wshttp
     //     auto &s = _get_session(user_arg);
     // }
 
-    // int session_callbacks::on_data_chunk_recv_callback(
-    //     nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_arg)
-    // {
-    //     log->debug("{} called", __PRETTY_FUNCTION__);
-    //     auto &s = _get_session(user_arg);
-    // }
+    int session_callbacks::on_data_chunk_recv_callback(
+        nghttp2_session* session,
+        uint8_t /* flags */,
+        int32_t stream_id,
+        const uint8_t* data,
+        size_t datalen,
+        void* /* user_arg */)
+    {
+        log->debug("{} called", __PRETTY_FUNCTION__);
+        auto s = _get_stream(session, stream_id);
+        return s->recv_data(ustring{data, datalen});
+    }
 
     int session_callbacks::on_frame_recv_callback(
         nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
@@ -164,25 +127,8 @@ namespace wshttp
         void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
-        auto& stream_id = frame->hd.stream_id;
         auto& s = _get_session(user_arg);
         return s.recv_header_hook(frame, ustring_view{name, namelen}, ustring_view{value, valuelen});
-
-        if (frame->hd.type == NGHTTP2_HEADERS and frame->headers.cat == NGHTTP2_HCAT_REQUEST
-            and not req::fields::path.compare(name))
-        {
-            auto* str = _get_stream(s, stream_id);
-
-            if (not str)
-            {
-                log->critical("Could not find stream of id:{} to process incoming header!", stream_id);
-                return NGHTTP2_ERR_CALLBACK_FAILURE;
-            }
-
-            return str->recv_header(req::headers{req::FIELD::path, ustring_view{value, valuelen}});
-        }
-
-        return 0;
     }
 
     int session_callbacks::on_begin_headers_callback(
@@ -243,7 +189,7 @@ namespace wshttp
         log->info("Inbound session successfully dispatched session data to remote: {}", remote());
     }
 
-    nghttp2_ssize session_base::send_hook(ustring_view data)
+    nghttp2_ssize session_base::send_hook(ustring data)
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -328,11 +274,7 @@ namespace wshttp
             _path._local = ip_address{&_laddr};
 
             bufferevent_setcb(
-                _bev.get(),
-                session_callbacks::read_cb,
-                session_callbacks::write_cb,
-                session_callbacks::server_event_cb,
-                this);
+                _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
 
             bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
@@ -362,17 +304,8 @@ namespace wshttp
 
             bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 
-            int val = 1;
-            if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
-                throw std::runtime_error{
-                    "Failed to set TCP_NODELAY on outbound session TLS socket: {}"_format(detail::current_error())};
-
             bufferevent_setcb(
-                _bev.get(),
-                session_callbacks::read_cb,
-                session_callbacks::write_cb,
-                session_callbacks::client_event_cb,
-                this);
+                _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
 
             bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
@@ -458,6 +391,11 @@ namespace wshttp
     {
         assert(_ep.in_event_loop());
 
+        int val = 1;
+        if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
+            throw std::runtime_error{
+                "Failed to set TCP_NODELAY on outbound session TLS socket: {}"_format(detail::current_error())};
+
         nghttp2_option* opt;
         nghttp2_session* _sess;
         nghttp2_session_callbacks* callbacks;
@@ -475,7 +413,8 @@ namespace wshttp
 
         nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
 
-        // nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, nullptr);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(
+            callbacks, session_callbacks::on_data_chunk_recv_callback);
         // nghttp2_session_callbacks_set_before_frame_send_callback(callbacks, nullptr);
         // nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, nullptr);
         // nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, nullptr);
@@ -622,9 +561,9 @@ namespace wshttp
                 auto& stream_id = frame->hd.stream_id;
 
                 if (auto it = _streams.find(stream_id); it != _streams.end())
-                    return it->second->recv_header(req::headers{req::FIELD::path, value});
+                    return it->second->recv_path_header(value);
 
-                log->critical("Could not find stream of id:{} to process incoming header!", stream_id);
+                log->critical("Could not find inbound stream of id:{} to recv header!", stream_id);
                 return NGHTTP2_ERR_CALLBACK_FAILURE;
             });
         }
@@ -642,14 +581,18 @@ namespace wshttp
         if (frame->hd.type != NGHTTP2_HEADERS or frame->headers.cat != NGHTTP2_HCAT_RESPONSE)
         {
             log->debug("Ignoring non-header and non hcat-response frames...");
-        }
-        else
-        {
-            (void)name;
-            (void)value;
+            return 0;
         }
 
-        return 0;
+        return _ep.call_get([&]() -> int {
+            auto& stream_id = frame->hd.stream_id;
+
+            if (auto it = _streams.find(stream_id); it != _streams.end())
+                return it->second->recv_header(req::headers{name, value});
+
+            log->critical("Could not find outbound stream of id:{} to recv header!", stream_id);
+            return NGHTTP2_ERR_CALLBACK_FAILURE;
+        });
     }
 
     int inbound_session::frame_recv_hook(const nghttp2_frame* frame)
