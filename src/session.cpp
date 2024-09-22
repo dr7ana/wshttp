@@ -22,7 +22,7 @@ namespace wshttp
 
     void session_callbacks::server_event_cb(struct bufferevent* /* bev */, short events, void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session<inbound_session>(user_arg);
 
         auto msg = "Inbound session (path: {})"_format(s.session_path());
@@ -59,7 +59,7 @@ namespace wshttp
 
     void session_callbacks::client_event_cb(struct bufferevent* /* bev */, short events, void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session<outbound_session>(user_arg);
 
         auto msg = "Outbound session (path: {})"_format(s.session_path());
@@ -102,14 +102,14 @@ namespace wshttp
 
     void session_callbacks::read_cb(struct bufferevent* /* bev */, void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
         s.read_session_data();
     }
 
     void session_callbacks::write_cb(struct bufferevent* /* bev */, void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
         s.write_session_data();
     }
@@ -117,7 +117,7 @@ namespace wshttp
     nghttp2_ssize session_callbacks::send_callback(
         nghttp2_session* /* session */, const uint8_t* data, size_t length, int /* flags */, void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
         return s.send_hook(ustring_view{data, length});
     }
@@ -136,59 +136,37 @@ namespace wshttp
     //     auto &s = _get_session(user_arg);
     // }
 
-    int session_callbacks::on_frame_recv_callback(nghttp2_session* s, const nghttp2_frame* frame, void* /* user_arg */)
+    int session_callbacks::on_frame_recv_callback(
+        nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& stream_id = frame->hd.stream_id;
-
-        switch (frame->hd.type)
-        {
-            case NGHTTP2_DATA:
-            case NGHTTP2_HEADERS:
-                if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM)
-                {
-                    auto* str = _get_stream(s, stream_id);
-
-                    if (not str)
-                    {
-                        log->critical("Could not find stream of id:{} to process incoming frame!", stream_id);
-                        return NGHTTP2_ERR_CALLBACK_FAILURE;
-                    }
-
-                    return str->recv_request();
-                }
-
-                break;
-            default:
-                break;
-        }
-
-        log->debug("Received nghttp2_frame_type value: {}", static_cast<int>(frame->hd.type));
-        return 0;
+        log->trace("{} called", __PRETTY_FUNCTION__);
+        auto& s = _get_session(user_arg);
+        return s.frame_recv_hook(frame);
     }
 
     int session_callbacks::on_stream_close_callback(
         nghttp2_session* /* session */, int32_t stream_id, uint32_t error_code, void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = _get_session<inbound_session>(user_arg);
-
+        log->trace("{} called", __PRETTY_FUNCTION__);
+        auto& s = _get_session(user_arg);
         return s.stream_close_hook(stream_id, error_code);
     }
 
     // called when nghttp2 emits single header name/value pair
     int session_callbacks::on_header_callback(
-        nghttp2_session* s,
+        nghttp2_session* /* session */,
         const nghttp2_frame* frame,
         const uint8_t* name,
-        size_t /* namelen */,
+        size_t namelen,
         const uint8_t* value,
         size_t valuelen,
         uint8_t /* flags */,
-        void* /* user_arg */)
+        void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
         auto& stream_id = frame->hd.stream_id;
+        auto& s = _get_session(user_arg);
+        return s.recv_header_hook(frame, ustring_view{name, namelen}, ustring_view{value, valuelen});
 
         if (frame->hd.type == NGHTTP2_HEADERS and frame->headers.cat == NGHTTP2_HCAT_REQUEST
             and not req::fields::path.compare(name))
@@ -210,22 +188,15 @@ namespace wshttp
     int session_callbacks::on_begin_headers_callback(
         nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
-        auto& s = _get_session<inbound_session>(user_arg);
-
-        if (frame->hd.type != NGHTTP2_HEADERS or frame->headers.cat != NGHTTP2_HCAT_REQUEST)
-        {
-            log->debug("Ignoring non-header and non-hcat-req frames...");
-            return 0;
-        }
-
-        return s.begin_headers_hook(frame->hd.stream_id);
+        log->trace("{} called", __PRETTY_FUNCTION__);
+        auto& s = _get_session(user_arg);
+        return s.begin_headers_hook(frame);
     }
 
     void session_base::read_session_data()
     {
         assert(_ep.in_event_loop());
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
 
         evbuffer* input = bufferevent_get_input(_bev.get());
         auto inlen = evbuffer_get_length(input);
@@ -244,7 +215,7 @@ namespace wshttp
     void session_base::write_session_data()
     {
         assert(_ep.in_event_loop());
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
 
         if (evbuffer_get_length(bufferevent_get_output(_bev.get())) > 0)
         {
@@ -264,7 +235,8 @@ namespace wshttp
     void session_base::send_session_data()
     {
         assert(_ep.in_event_loop());
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         if (nghttp2_session_send(_session.get()) != 0)
             throw std::runtime_error{"Failed to dispatch session data to remote: {}"_format(remote())};
 
@@ -274,6 +246,8 @@ namespace wshttp
     nghttp2_ssize session_base::send_hook(ustring_view data)
     {
         assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         return _ep.call_get([&]() -> nghttp2_ssize {
             if (auto outlen = evbuffer_get_length(bufferevent_get_output(_bev.get())); outlen >= OUTPUT_BLOCK_THRESHOLD)
             {
@@ -289,6 +263,8 @@ namespace wshttp
     void session_base::config_send_initial()
     {
         assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         return _ep.call_get([this]() {
             initialize_session();
             send_initial();
@@ -411,21 +387,30 @@ namespace wshttp
 
     void inbound_session::close_session()
     {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         _ep.call_soon([&]() {
-            log->info("Session (path: {}) signalling listener to close connection...", _path);
+            log->info("Session (path: {}) signaled listener to close connection...", _path);
             _lst.close_session(_path.remote());
         });
     }
 
     void outbound_session::on_connect()
     {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         //
     }
 
     void outbound_session::close_session()
     {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         _ep.call_soon([&]() {
-            log->info("Session (path: {}) signalling node to close connection...", _path);
+            log->info("Session (path: {}) signaled node to close connection...", _path);
             _n.close_session(_host);
         });
     }
@@ -433,6 +418,7 @@ namespace wshttp
     void inbound_session::initialize_session()
     {
         assert(_ep.in_event_loop());
+
         nghttp2_option* opt;
         nghttp2_session* _sess;
         nghttp2_session_callbacks* callbacks;
@@ -510,7 +496,7 @@ namespace wshttp
     void inbound_session::send_initial()
     {
         assert(_ep.in_event_loop());
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
 
         req::settings _settings;
         _settings.add_setting(NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100);
@@ -524,7 +510,7 @@ namespace wshttp
     void outbound_session::send_initial()
     {
         assert(_ep.in_event_loop());
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
 
         req::settings _settings;
         _settings.add_setting(NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100);
@@ -538,22 +524,55 @@ namespace wshttp
     int inbound_session::stream_close_hook(int32_t stream_id, uint32_t error_code)
     {
         assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
         return _ep.call_get([&]() {
-            if (auto it = _streams.find(stream_id); it != _streams.end())
+            if (_streams.erase(stream_id))
             {
-                log->info("Closing stream (ID:{}) with error code: {}", stream_id, error_code);
-                _streams.erase(it);
+                log->info("Closed inbound stream (ID:{}, ec:{})", stream_id, error_code);
             }
             else
-                log->warn("Could not find stream (ID:{}); received error code: {}", stream_id, error_code);
+                log->warn("Could not find inbound stream (ID:{}); received error code: {}", stream_id, error_code);
             return 0;
         });
     }
 
-    int inbound_session::begin_headers_hook(int32_t stream_id)
+    int outbound_session::stream_close_hook(int32_t stream_id, uint32_t error_code)
     {
         assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        return _ep.call_get([&]() -> int {
+            if (_streams.erase(stream_id))
+            {
+                log->info("Closed outbound stream (ID:{}, ec:{}); terminating session...", stream_id, error_code);
+                if (auto rv = nghttp2_session_terminate_session(_session.get(), NGHTTP2_NO_ERROR); rv != 0)
+                {
+                    log->warn("Call to `nghttp2_session_terminate_session` failed; reason: {}", nghttp2_strerror(rv));
+                    return NGHTTP2_ERR_CALLBACK_FAILURE;
+                }
+                close_session();
+            }
+            else
+                log->warn("Could not find outbound stream (ID:{}); received error code: {}", stream_id, error_code);
+            return 0;
+        });
+    }
+
+    int inbound_session::begin_headers_hook(const nghttp2_frame* frame)
+    {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        if (frame->hd.type != NGHTTP2_HEADERS or frame->headers.cat != NGHTTP2_HCAT_REQUEST)
+        {
+            log->debug("Ignoring non-header and non hcat-request frames...");
+            return 0;
+        }
+
         return _ep.call_get([&]() {
+            auto& stream_id = frame->hd.stream_id;
+
             // create stream
             auto [itr, b] = _streams.try_emplace(stream_id, nullptr);
 
@@ -573,6 +592,107 @@ namespace wshttp
 
             return 0;
         });
+    }
+
+    int outbound_session::begin_headers_hook(const nghttp2_frame* frame)
+    {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        if (frame->hd.type != NGHTTP2_HEADERS or frame->headers.cat != NGHTTP2_HCAT_REQUEST)
+            log->debug("Ignoring non-header and non hcat-request frames...");
+        else
+            log->debug("Outbound session receiving response headers...");
+
+        return 0;
+    }
+
+    int inbound_session::recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value)
+    {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        if (frame->hd.type != NGHTTP2_HEADERS or frame->headers.cat != NGHTTP2_HCAT_REQUEST)
+        {
+            log->debug("Ignoring non-header and non hcat-request frames...");
+        }
+        else if (req::fields::path.compare(name) == 0)
+        {
+            return _ep.call_get([&]() -> int {
+                auto& stream_id = frame->hd.stream_id;
+
+                if (auto it = _streams.find(stream_id); it != _streams.end())
+                    return it->second->recv_header(req::headers{req::FIELD::path, value});
+
+                log->critical("Could not find stream of id:{} to process incoming header!", stream_id);
+                return NGHTTP2_ERR_CALLBACK_FAILURE;
+            });
+        }
+        else
+            log->debug("Received unhandled header type on inbound session (remote: {})", _path.remote());
+
+        return 0;
+    }
+
+    int outbound_session::recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value)
+    {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        if (frame->hd.type != NGHTTP2_HEADERS or frame->headers.cat != NGHTTP2_HCAT_RESPONSE)
+        {
+            log->debug("Ignoring non-header and non hcat-response frames...");
+        }
+        else
+        {
+            (void)name;
+            (void)value;
+        }
+
+        return 0;
+    }
+
+    int inbound_session::frame_recv_hook(const nghttp2_frame* frame)
+    {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        return _ep.call_get([&]() -> int {
+            auto& stream_id = frame->hd.stream_id;
+
+            switch (frame->hd.type)
+            {
+                case NGHTTP2_DATA:
+                case NGHTTP2_HEADERS:
+                    if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM)
+                    {
+                        if (auto it = _streams.find(stream_id); it != _streams.end())
+                            return it->second->recv_frame();
+                        else
+                        {
+                            log->critical("Could not find stream of id:{} to process incoming frame!", stream_id);
+                            return NGHTTP2_ERR_CALLBACK_FAILURE;
+                        }
+                    }
+                    break;
+                default:
+                    break;
+            }
+
+            log->debug("Received nghttp2_frame_type value: {}", static_cast<int>(frame->hd.type));
+            return 0;
+        });
+    }
+
+    int outbound_session::frame_recv_hook(const nghttp2_frame* frame)
+    {
+        assert(_ep.in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        if (frame->hd.type == NGHTTP2_HEADERS and frame->headers.cat == NGHTTP2_HCAT_RESPONSE)
+            log->debug("All headers received on stream (ID: {})", frame->hd.stream_id);
+
+        return 0;
     }
 
     std::shared_ptr<stream> inbound_session::make_stream(int32_t stream_id)

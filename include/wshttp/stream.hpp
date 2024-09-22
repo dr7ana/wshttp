@@ -6,15 +6,20 @@
 
 namespace wshttp
 {
+    class session_base;
     class inbound_session;
+    class outbound_session;
 
     class stream
     {
         friend class event_loop;
         friend class inbound_session;
+        friend class outbound_session;
         friend struct session_callbacks;
 
         stream(inbound_session& s, const session_ptr& _s, int32_t id = 0);
+
+        stream(outbound_session& s, const session_ptr& _s, int32_t id = 0);
 
         // No copy, no move; always hold in shared_ptr using static ::make()
         stream(const stream&) = delete;
@@ -26,8 +31,10 @@ namespace wshttp
         ~stream() = default;
 
       private:
-        inbound_session& _s;
+        session_base& _s;
         session_ptr _session;
+
+        IO dir;
 
         int32_t _id;
         int _fd{-1};
@@ -37,7 +44,7 @@ namespace wshttp
 
         int recv_header(req::headers hdr);
 
-        int recv_request();
+        int recv_frame();
 
         int send_error();
 

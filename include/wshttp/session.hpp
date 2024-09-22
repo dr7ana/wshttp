@@ -47,6 +47,14 @@ namespace wshttp
 
         virtual void send_initial() = 0;
 
+        virtual int begin_headers_hook(const nghttp2_frame* frame) = 0;
+
+        virtual int recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value) = 0;
+
+        virtual int frame_recv_hook(const nghttp2_frame* frame) = 0;
+
+        virtual int stream_close_hook(int32_t stream_id, uint32_t error_code = 0) = 0;
+
         virtual void close_session() = 0;
 
       public:
@@ -109,9 +117,13 @@ namespace wshttp
 
         void send_initial() override;
 
-        int stream_close_hook(int32_t stream_id, uint32_t error_code = 0);
+        int begin_headers_hook(const nghttp2_frame* frame) override;
 
-        int begin_headers_hook(int32_t stream_id);
+        int recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value) override;
+
+        int frame_recv_hook(const nghttp2_frame* frame) override;
+
+        int stream_close_hook(int32_t stream_id, uint32_t error_code = 0) override;
 
         std::shared_ptr<stream> make_stream(int32_t stream_id);
 
@@ -142,6 +154,14 @@ namespace wshttp
         void initialize_session() override;
 
         void send_initial() override;
+
+        int begin_headers_hook(const nghttp2_frame* frame) override;
+
+        int recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value) override;
+
+        int frame_recv_hook(const nghttp2_frame* frame) override;
+
+        int stream_close_hook(int32_t stream_id, uint32_t error_code = 0) override;
 
         void on_connect();
 

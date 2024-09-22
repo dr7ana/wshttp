@@ -36,9 +36,16 @@ namespace wshttp
         return ret;
     }
 
-    stream::stream(inbound_session& s, const session_ptr& sess, int32_t id) : _s{s}, _session{sess}, _id{id}
+    stream::stream(inbound_session& s, const session_ptr& sess, int32_t id)
+        : _s{s}, _session{sess.get(), deleters::_session{}}, dir{IO::INBOUND}, _id{id}
     {
-        _session = s._ep.template shared_ptr<nghttp2_session>(sess.get(), deleters::_session{});
+        log->debug("Inbound stream (ID: {}) created!", _id);
+    }
+
+    stream::stream(outbound_session& s, const session_ptr& sess, int32_t id)
+        : _s{s}, _session{sess.get(), deleters::_session{}}, dir{IO::OUTBOUND}, _id{id}
+    {
+        log->debug("Outbound stream (ID: {}) created!", _id);
     }
 
     int stream::recv_header(req::headers hdr)
@@ -47,7 +54,7 @@ namespace wshttp
         return _req ? 0 : -1;
     }
 
-    int stream::recv_request()
+    int stream::recv_frame()
     {
         if (not _req)
         {
