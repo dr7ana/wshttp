@@ -85,7 +85,7 @@ namespace wshttp
 
         inline void print_dns_req(struct evdns_server_request* req)
         {
-            auto msg = "\n----- INCOMING REQUEST -----\nFlags:{}\nNum questions:{}\n"_format(
+            auto msg = "\n----- INCOMING REQUEST -----\nFlags: {}\nNum questions: {}\n"_format(
                 req->flags, req->nquestions ? req->nquestions : 0);
 
             if (req->nquestions)
@@ -93,7 +93,7 @@ namespace wshttp
                 for (int i = 0; i < req->nquestions; ++i)
                 {
                     auto* q = req->questions[i];
-                    msg += "Question #{}\nName: {} -- Type: {} -- Class: {}"_format(
+                    msg += "Question #{}:\nName: {} -- Type: {} -- Class: {}"_format(
                         i + 1, q->name, translate_req_type(q->type), translate_dns_req_class(q->dns_question_class));
                 }
             }

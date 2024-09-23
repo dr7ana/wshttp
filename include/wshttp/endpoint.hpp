@@ -39,7 +39,7 @@ namespace wshttp
             if constexpr (sizeof...(opts))
                 handle_ep_opt(std::forward<Opt>(opts)...);
 
-            _dns->initialize();
+            // _dns->initialize();
             log->trace("Client endpoint created with initialized event loop!");
         }
 

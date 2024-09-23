@@ -309,8 +309,7 @@ namespace wshttp
 
             bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
-            if (bufferevent_socket_connect_hostname(
-                    _bev.get(), *_ep._dns, AF_UNSPEC, get_uri().host().data(), HTTPS_PORT)
+            if (bufferevent_socket_connect_hostname(_bev.get(), *_ep._dns, AF_INET, get_uri().host().data(), HTTPS_PORT)
                 != 0)
                 throw std::runtime_error{"Could not connect to remote host: {}"_format(detail::current_error())};
 
@@ -395,6 +394,17 @@ namespace wshttp
         if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
             throw std::runtime_error{
                 "Failed to set TCP_NODELAY on outbound session TLS socket: {}"_format(detail::current_error())};
+
+        sockaddr _laddr{};
+        socklen_t len;
+
+        if (getsockname(_fd, &_laddr, &len) < 0)
+            throw std::runtime_error{"Failed to get local socket address for outbound (host: {}): {}, {}"_format(
+                _host, detail::current_error(), errno)};
+
+        _path._local = ip_address{&_laddr};
+
+        log->debug("Outbound session (host: {}) has local socket address: {}", _host, _path.local());
 
         nghttp2_option* opt;
         nghttp2_session* _sess;

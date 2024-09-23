@@ -103,7 +103,7 @@ namespace wshttp
 
                 log->debug("DNS server successfully configured UDP socket!");
 
-                register_nameserver(defaults::DNS_PORT);
+                // register_nameserver(defaults::DNS_PORT);
             });
         }
 
