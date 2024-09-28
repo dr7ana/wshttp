@@ -4,7 +4,7 @@
 
 namespace wshttp::req
 {
-    constexpr ustring_view field(FIELD f)
+    constexpr uspan field(FIELD f)
     {
         switch (f)
         {
@@ -43,7 +43,7 @@ namespace wshttp::req
             static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
     }
 
-    static nghttp2_nv make_header(FIELD f, ustring_view& v, nghttp2_nv_flag flags)
+    static nghttp2_nv make_header(FIELD f, uspan& v, nghttp2_nv_flag flags)
     {
         return nghttp2_nv{
             const_cast<uint8_t*>(field(f).data()),
@@ -58,12 +58,12 @@ namespace wshttp::req
         return nghttp2_settings_entry{id, val};
     }
 
-    headers::headers(ustring_view name, ustring_view val, nghttp2_nv_flag flags)
+    headers::headers(uspan name, uspan val, nghttp2_nv_flag flags)
     {
         make_pair(name.data(), name.size(), val.data(), val.size(), flags);
     }
 
-    headers::headers(FIELD f, ustring_view val, nghttp2_nv_flag flags)
+    headers::headers(FIELD f, uspan val, nghttp2_nv_flag flags)
     {
         add_field(f, val, flags);
     }
@@ -73,13 +73,13 @@ namespace wshttp::req
         return headers{fields::status, _status(s)};
     }
 
-    std::pair<ustring_view, ustring_view> headers::current()
+    std::pair<uspan, uspan> headers::current()
     {
         auto& h = _hdrs[_index];
         return {{h.name, h.namelen}, {h.value, h.valuelen}};
     }
 
-    std::pair<ustring_view, ustring_view> headers::next()
+    std::pair<uspan, uspan> headers::next()
     {
         _index += 1;
         _index %= _hdrs.size();
@@ -91,16 +91,16 @@ namespace wshttp::req
         for (size_t i = 0; i < _hdrs.size(); ++i)
         {
             auto [n, v] = (*this)[i];
-            log->info("Type: {}, Value: {}", detail::to_sv(n), buffer_printer{v});
+            log->info("Type: {}, Value: {}", n, buffer_printer{v});
         }
     }
 
-    void headers::add_field(FIELD f, ustring_view val, nghttp2_nv_flag flags)
+    void headers::add_field(FIELD f, uspan val, nghttp2_nv_flag flags)
     {
         _hdrs.push_back(make_header(f, val, flags));
     }
 
-    void headers::add_pair(ustring_view name, ustring_view val, nghttp2_nv_flag flags)
+    void headers::add_pair(uspan name, uspan val, nghttp2_nv_flag flags)
     {
         _hdrs.push_back(make_pair(name.data(), name.size(), val.data(), val.size(), flags));
     }

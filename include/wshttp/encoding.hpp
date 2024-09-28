@@ -1,5 +1,6 @@
 #pragma once
 
+#include "concepts.hpp"
 #include "types.hpp"
 
 #include <bit>

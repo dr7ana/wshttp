@@ -56,7 +56,7 @@ namespace wshttp
         return 0;
     }
 
-    int stream::recv_path_header(ustring_view path)
+    int stream::recv_path_header(uspan path)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 

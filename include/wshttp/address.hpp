@@ -1,5 +1,6 @@
 #pragma once
 
+#include "concepts.hpp"
 #include "types.hpp"
 
 #include <variant>
@@ -9,15 +10,6 @@ namespace wshttp
     static constexpr auto URI_FIELDS{8};
     static constexpr uint16_t HTTPS_PORT{443};
     static constexpr auto HTTPS_SCHEME = "https:"sv;
-
-    struct ipv4;
-    struct ipv6;
-
-    namespace concepts
-    {
-        template <typename ip_t>
-        concept ip_type = std::same_as<ip_t, ipv4> || std::same_as<ip_t, ipv6>;
-    }  // namespace concepts
 
     using ip_v = std::variant<ipv4, ipv6>;
 
@@ -43,7 +35,7 @@ namespace wshttp
       public:
         std::array<std::string, URI_FIELDS> _fields{};
 
-        template <concepts::string_view_compatible T>
+        template <concepts::cspan_compatible T>
         static uri parse(T u)
         {
             return uri::parse(std::string{reinterpret_cast<const char*>(u.data()), u.size()});

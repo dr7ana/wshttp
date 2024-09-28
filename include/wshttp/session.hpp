@@ -1,6 +1,7 @@
 #pragma once
 
 #include "address.hpp"
+#include "concepts.hpp"
 #include "context.hpp"
 #include "listener.hpp"
 #include "node.hpp"
@@ -53,7 +54,7 @@ namespace wshttp
 
         virtual int begin_headers_hook(const nghttp2_frame* frame) = 0;
 
-        virtual int recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value) = 0;
+        virtual int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) = 0;
 
         virtual int frame_recv_hook(const nghttp2_frame* frame) = 0;
 
@@ -83,12 +84,6 @@ namespace wshttp
             return _session.get();
         }
     };
-
-    namespace concepts
-    {
-        template <typename T>
-        concept session_type = std::derived_from<T, session_base>;
-    }  //  namespace concepts
 
     class inbound_session final : public session_base
     {
@@ -126,7 +121,7 @@ namespace wshttp
 
         int begin_headers_hook(const nghttp2_frame* frame) override;
 
-        int recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value) override;
+        int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) override;
 
         int frame_recv_hook(const nghttp2_frame* frame) override;
 
@@ -166,7 +161,7 @@ namespace wshttp
 
         int begin_headers_hook(const nghttp2_frame* frame) override;
 
-        int recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value) override;
+        int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) override;
 
         int frame_recv_hook(const nghttp2_frame* frame) override;
 

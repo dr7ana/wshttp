@@ -1,24 +1,27 @@
 #pragma once
 
+#include "concepts.hpp"
 #include "types.hpp"
 
 namespace wshttp
 {
+    using namespace wshttp::literals;
+
     namespace req
     {
         namespace fields
         {
-            inline constexpr auto method = ":method"_usv;
-            inline constexpr auto scheme = ":scheme"_usv;
-            inline constexpr auto authority = ":authority"_usv;
-            inline constexpr auto path = ":path"_usv;
-            inline constexpr auto status = ":status"_usv;
+            inline constexpr auto method = ":method"_usp;
+            inline constexpr auto scheme = ":scheme"_usp;
+            inline constexpr auto authority = ":authority"_usp;
+            inline constexpr auto path = ":path"_usp;
+            inline constexpr auto status = ":status"_usp;
         }  // namespace fields
 
         namespace status
         {
-            inline constexpr auto HTTP_200 = "200"_usv;
-            inline constexpr auto HTTP_404 = "404"_usv;
+            inline constexpr auto HTTP_200 = "200"_usp;
+            inline constexpr auto HTTP_404 = "404"_usp;
         }  //  namespace status
 
         namespace errors
@@ -35,35 +38,35 @@ namespace wshttp
             size_t _index{};
 
           public:
-            headers(ustring_view name, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
-            headers(FIELD f, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
+            headers(uspan name, uspan val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
+            headers(FIELD f, uspan val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
 
             static headers make_status(STATUS s);
 
-            std::pair<ustring_view, ustring_view> current();
-            std::pair<ustring_view, ustring_view> next();
+            std::pair<uspan, uspan> current();
+            std::pair<uspan, uspan> next();
 
             size_t size() const { return _hdrs.size(); }
             bool end() const { return _index == size() - 1; }
 
             void print() const;
 
-            void add_field(FIELD f, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
+            void add_field(FIELD f, uspan val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
 
-            void add_pair(ustring_view name, ustring_view val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
+            void add_pair(uspan name, uspan val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
 
-            std::pair<ustring_view, ustring_view> operator[](size_t i)
+            std::pair<uspan, uspan> operator[](size_t i)
             {
                 assert(i < _hdrs.size());
                 auto& h = _hdrs[i];
-                return {ustring_view{h.name, h.namelen}, ustring_view{h.value, h.valuelen}};
+                return {uspan{h.name, h.namelen}, uspan{h.value, h.valuelen}};
             }
 
-            const std::pair<ustring_view, ustring_view> operator[](size_t i) const
+            const std::pair<uspan, uspan> operator[](size_t i) const
             {
                 assert(i < _hdrs.size());
                 auto& h = _hdrs[i];
-                return {ustring_view{h.name, h.namelen}, ustring_view{h.value, h.valuelen}};
+                return {uspan{h.name, h.namelen}, uspan{h.value, h.valuelen}};
             }
 
             template <concepts::nghttp2_nv_type T>

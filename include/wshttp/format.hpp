@@ -1,5 +1,7 @@
 #pragma once
 
+#include "concepts.hpp"
+
 // #include <fmt/core.h>
 #include <fmt/format.h>
 // #include <fmt/ranges.h>
@@ -9,7 +11,6 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
-#include <concepts>
 #include <source_location>
 
 using namespace std::literals;
@@ -18,17 +19,6 @@ namespace wshttp
 {
     inline const auto PATTERN_COLOR = "[%H:%M:%S.%e] [%*] [\x1b[1m%n\x1b[0m:%^%l%$] >> %v"s;
     inline const auto PATTERN_COLOR2 = "[%H:%M:%S.%e] [%*] [\x1b[1m%n\x1b[0m:%^%l%$|\x1b[3m%g:%#\x1b[0m] >> %v"s;
-
-    namespace concepts
-    {
-        // Types can opt-in to being fmt-formattable by ensuring they have a ::to_string() method defined
-        template <typename T>
-        concept to_string_formattable = T::to_string_formattable && requires(T a) {
-            {
-                a.to_string()
-            } -> std::convertible_to<std::string_view>;
-        };
-    }  // namespace concepts
 
     namespace detail
     {

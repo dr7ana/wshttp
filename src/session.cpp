@@ -34,7 +34,7 @@ namespace wshttp
 
             SSL_get0_alpn_selected(s._ssl.get(), &_alpn, &_alpn_len);
 
-            if (not _alpn_len or defaults::ALPN.compare({_alpn, _alpn_len}) == 0)
+            if (not _alpn_len or defaults::ALPN == cspan<const unsigned char>{_alpn, _alpn_len})
             {
                 log->info(
                     "{} {} alpn; initializing...", msg, _alpn_len ? "successfully negotiated" : "did not negotiate");
@@ -128,7 +128,7 @@ namespace wshttp
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
-        return s.recv_header_hook(frame, ustring_view{name, namelen}, ustring_view{value, valuelen});
+        return s.recv_header_hook(frame, uspan{name, namelen}, uspan{value, valuelen});
     }
 
     int session_callbacks::on_begin_headers_callback(
@@ -556,7 +556,7 @@ namespace wshttp
         return 0;
     }
 
-    int inbound_session::recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value)
+    int inbound_session::recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value)
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -565,7 +565,7 @@ namespace wshttp
         {
             log->debug("Ignoring non-header and non hcat-request frames...");
         }
-        else if (req::fields::path.compare(name) == 0)
+        else if (req::fields::path == name)
         {
             return _ep.call_get([&]() -> int {
                 auto& stream_id = frame->hd.stream_id;
@@ -583,7 +583,7 @@ namespace wshttp
         return 0;
     }
 
-    int outbound_session::recv_header_hook(const nghttp2_frame* frame, ustring_view name, ustring_view value)
+    int outbound_session::recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value)
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);

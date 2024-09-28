@@ -1,8 +1,8 @@
 #pragma once
 
+#include "concepts.hpp"
 #include "encoding.hpp"
 #include "format.hpp"
-#include "utils.hpp"
 
 #include <ada.h>
 
@@ -50,13 +50,6 @@ namespace wshttp
 
     namespace detail
     {
-        template <typename SV>
-            requires std::same_as<SV, ustring_view> || std::same_as<SV, bstring_view>
-        inline std::string_view to_sv(SV x)
-        {
-            return {reinterpret_cast<const char*>(x.data()), x.size()};
-        }
-
         inline const char* current_error()
         {
             return ERR_error_string(ERR_get_error(), NULL);
@@ -178,6 +171,11 @@ namespace wshttp
     struct buffer_printer
     {
         std::basic_string_view<std::byte> buf;
+
+        template <typename T>
+            requires concepts::cspan_compatible<T> || concepts::string_view_compatible<T>
+        explicit buffer_printer(T buf) : buffer_printer{buf.data(), buf.size()}
+        {}
 
         // Constructed from any type of string_view<T> for a single-byte T (char, std::byte, uint8_t, etc.)
         template <concepts::basic_char T>

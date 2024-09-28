@@ -44,7 +44,7 @@ namespace wshttp
 
         int recv_data(ustring data);
 
-        int recv_path_header(ustring_view path);
+        int recv_path_header(uspan path);
 
         int recv_header(req::headers hdr);
 
