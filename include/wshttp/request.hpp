@@ -18,7 +18,12 @@ namespace wshttp
             inline constexpr auto status = ":status"_usp;
         }  // namespace fields
 
-        namespace status
+        namespace types
+        {
+            inline constexpr auto get = "GET"_usp;
+        }   //  namespace types
+
+        namespace code
         {
             inline constexpr auto HTTP_200 = "200"_usp;
             inline constexpr auto HTTP_404 = "404"_usp;
@@ -41,7 +46,9 @@ namespace wshttp
             headers(uspan name, uspan val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
             headers(FIELD f, uspan val, nghttp2_nv_flag flags = NGHTTP2_NV_FLAG_NONE);
 
-            static headers make_status(STATUS s);
+            static headers make_request();
+
+            static headers make_status(CODE s);
 
             std::pair<uspan, uspan> current();
             std::pair<uspan, uspan> next();

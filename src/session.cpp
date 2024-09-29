@@ -34,7 +34,7 @@ namespace wshttp
 
             SSL_get0_alpn_selected(s._ssl.get(), &_alpn, &_alpn_len);
 
-            if (not _alpn_len or defaults::ALPN == cspan<const unsigned char>{_alpn, _alpn_len})
+            if (not _alpn_len or defaults::ALPN == uspan{_alpn, _alpn_len})
             {
                 log->info(
                     "{} {} alpn; initializing...", msg, _alpn_len ? "successfully negotiated" : "did not negotiate");
@@ -214,7 +214,6 @@ namespace wshttp
         return _ep.call_get([this]() {
             initialize_session();
             send_initial();
-            send_session_data();
         });
     }
 
@@ -406,7 +405,6 @@ namespace wshttp
 
         log->debug("Outbound session (host: {}) has local socket address: {}", _host, _path.local());
 
-        nghttp2_option* opt;
         nghttp2_session* _sess;
         nghttp2_session_callbacks* callbacks;
 
@@ -429,11 +427,6 @@ namespace wshttp
         // nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, nullptr);
         // nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, nullptr);
 
-        if (auto rv = nghttp2_option_new(&opt); rv != 0)
-            throw std::runtime_error{"Failed to create nghttp2 session option struct: {}"_format(nghttp2_strerror(rv))};
-
-        nghttp2_option_set_no_recv_client_magic(opt, 1);
-
         if (auto rv = nghttp2_session_client_new(&_sess, callbacks, this); rv != 0)
             throw std::runtime_error{"Failed to initialize outbound session: {}"_format(nghttp2_strerror(rv))};
 
@@ -454,6 +447,8 @@ namespace wshttp
             throw std::runtime_error{"Failed to submit inbound session settings: {}"_format(nghttp2_strerror(rv))};
 
         log->info("Inbound session successfully submitted nghttp2 settings!");
+
+        send_session_data();
     }
 
     void outbound_session::send_initial()
@@ -468,6 +463,8 @@ namespace wshttp
             throw std::runtime_error{"Failed to submit outbound session settings: {}"_format(nghttp2_strerror(rv))};
 
         log->info("Outbound session successfully submitted nghttp2 settings!");
+
+        
     }
 
     int inbound_session::stream_close_hook(int32_t stream_id, uint32_t error_code)

@@ -4,7 +4,7 @@
 
 namespace wshttp::req
 {
-    constexpr uspan field(FIELD f)
+    constexpr uspan _field(FIELD f)
     {
         switch (f)
         {
@@ -21,14 +21,14 @@ namespace wshttp::req
         }
     }
 
-    constexpr auto _status(STATUS s)
+    constexpr auto _code(CODE s)
     {
         switch (s)
         {
-            case STATUS::_200:
-                return status::HTTP_200;
-            case STATUS::_404:
-                return status::HTTP_404;
+            case CODE::_200:
+                return code::HTTP_200;
+            case CODE::_404:
+                return code::HTTP_404;
         }
     }
 
@@ -46,9 +46,9 @@ namespace wshttp::req
     static nghttp2_nv make_header(FIELD f, uspan& v, nghttp2_nv_flag flags)
     {
         return nghttp2_nv{
-            const_cast<uint8_t*>(field(f).data()),
+            const_cast<uint8_t*>(_field(f).data()),
             const_cast<uint8_t*>(v.data()),
-            field(f).size(),
+            _field(f).size(),
             v.size(),
             static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
     }
@@ -68,9 +68,9 @@ namespace wshttp::req
         add_field(f, val, flags);
     }
 
-    headers headers::make_status(STATUS s)
+    headers headers::make_status(CODE s)
     {
-        return headers{fields::status, _status(s)};
+        return headers{fields::status, _code(s)};
     }
 
     std::pair<uspan, uspan> headers::current()

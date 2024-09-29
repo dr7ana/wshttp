@@ -9,7 +9,7 @@ namespace wshttp
 {
     template <typename T = const char, size_t N = std::dynamic_extent>
         requires std::is_const_v<T> && std::equality_comparable<T>
-    class cspan : public std::span<T, N>
+    class const_span : public std::span<T, N>
     {
       public:
         using std::span<T, N>::span;
@@ -18,25 +18,25 @@ namespace wshttp
         static constexpr bool to_string_formattable = true;
     };
 
-    using uspan = cspan<const unsigned char>;
-    using bspan = cspan<const std::byte>;
+    using cspan = const_span<const char>;
+    using uspan = const_span<const unsigned char>;
+    using bspan = const_span<const std::byte>;
 
     namespace concepts
     {
         template <typename T>
         concept cspan_compatible =
-            std::convertible_to<T, cspan<const char>> || std::convertible_to<T, uspan> || std::convertible_to<T, bspan>;
-
+            std::convertible_to<T, cspan> || std::convertible_to<T, uspan> || std::convertible_to<T, bspan>;
     }  //  namespace concepts
 
     template <typename T, size_t N, concepts::const_contiguous_range_t<T> R>
-    bool operator==(cspan<T, N> lhs, const R& rhs)
+    bool operator==(const_span<T, N> lhs, const R& rhs)
     {
         return std::ranges::equal(lhs, rhs);
     }
 
     template <typename T, size_t N, concepts::const_contiguous_range_t<T> R>
-    auto operator<=>(cspan<T, N> lhs, const R& rhs)
+    auto operator<=>(const_span<T, N> lhs, const R& rhs)
     {
         return std::lexicographical_compare_three_way(
             lhs.begin(), lhs.end(), std::ranges::begin(rhs), std::ranges::end(rhs));
@@ -56,7 +56,7 @@ namespace wshttp
             std::array<T, N> arr;
             using size = std::integral_constant<size_t, N>;
 
-            consteval cspan<const T, N> span() const { return {arr}; }
+            consteval const_span<const T, N> span() const { return {arr}; }
         };
 
         template <size_t N>
@@ -82,19 +82,19 @@ namespace wshttp
     namespace literals
     {
         template <detail::sp_literal CStr>
-        constexpr cspan<const char, decltype(CStr)::size::value> operator""_sp()
+        constexpr const_span<const char, decltype(CStr)::size::value> operator""_sp()
         {
             return CStr.span();
         }
 
         template <detail::usp_literal UStr>
-        constexpr cspan<const unsigned char, decltype(UStr)::size::value> operator""_usp()
+        constexpr const_span<const unsigned char, decltype(UStr)::size::value> operator""_usp()
         {
             return UStr.span();
         }
 
         template <detail::bsp_literal BStr>
-        constexpr cspan<const std::byte, decltype(BStr)::size::value> operator""_bsp()
+        constexpr const_span<const std::byte, decltype(BStr)::size::value> operator""_bsp()
         {
             return BStr.span();
         }
@@ -124,7 +124,7 @@ namespace wshttp
 
         struct _bufferevent
         {
-            inline void operator()(::bufferevent* b) { bufferevent_free(b); };
+            inline void operator()(::bufferevent* b) const { bufferevent_free(b); };
         };
 
         struct _evconnlistener
@@ -160,7 +160,7 @@ namespace wshttp
     namespace req
     {
         enum class FIELD { method, scheme, authority, path, status };
-        enum class STATUS { _200, _404 };
+        enum class CODE { _200, _404 };
     }  // namespace req
 
     namespace defaults

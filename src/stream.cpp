@@ -94,7 +94,7 @@ namespace wshttp
 
         _fd = rv;
 
-        rv = send_response(req::headers::make_status(req::STATUS::_200));
+        rv = send_response(req::headers::make_status(req::CODE::_200));
         if (rv != 0)
             close(_fd);
 
@@ -130,7 +130,7 @@ namespace wshttp
 
         _fd = _pipes[0];
 
-        auto rv = send_response(req::headers::make_status(req::STATUS::_404));
+        auto rv = send_response(req::headers::make_status(req::CODE::_404));
         if (rv != 0)
             close(_pipes[0]);
 
