@@ -7,6 +7,12 @@
 
 namespace wshttp
 {
+    namespace detail
+    {
+        template <typename T>
+        concept session_type = std::derived_from<T, session_base>;
+    }
+
     static constexpr auto OUTPUT_BLOCK_THRESHOLD{1 << 16};
 
     static stream* _get_stream(struct nghttp2_session* s, int32_t id)
@@ -14,13 +20,13 @@ namespace wshttp
         return static_cast<stream*>(nghttp2_session_get_stream_user_data(s, id));
     }
 
-    template <concepts::session_type T = session_base>
+    template <detail::session_type T = session_base>
     static T& _get_session(void* user_arg)
     {
         return *static_cast<T*>(user_arg);
     }
 
-    void session_callbacks::event_cb(struct bufferevent* /* bev */, short events, void* user_arg)
+    void session_callbacks::event_cb(struct bufferevent* bev, short events, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
@@ -37,14 +43,16 @@ namespace wshttp
             if (not _alpn_len or defaults::ALPN == uspan{_alpn, _alpn_len})
             {
                 log->info(
-                    "{} {} alpn; initializing...", msg, _alpn_len ? "successfully negotiated" : "did not negotiate");
+                        "{} {} alpn; initializing...",
+                        msg,
+                        _alpn_len ? "successfully negotiated" : "did not negotiate");
                 return s.config_send_initial();
             }
 
             log->warn(
-                "{} failed to negotiate 'h2' alpn! Received: {}",
-                msg,
-                std::string_view{reinterpret_cast<const char*>(_alpn), _alpn_len});
+                    "{} failed to negotiate 'h2' alpn! Received: {}",
+                    msg,
+                    std::string_view{reinterpret_cast<const char*>(_alpn), _alpn_len});
         }
         else if (events & BEV_EVENT_EOF)
             msg += " EOF!";
@@ -52,6 +60,9 @@ namespace wshttp
             msg += " network error!";
         else if (events & BEV_EVENT_TIMEOUT)
             msg += " timed out!";
+
+        if (auto dns_err = bufferevent_socket_get_dns_error(bev); dns_err)
+            log->warn("DNS err: {}", evutil_gai_strerror(dns_err));
 
         log->warn("{}: {}", msg, detail::current_error());
         s.close_session();
@@ -72,27 +83,27 @@ namespace wshttp
     }
 
     nghttp2_ssize session_callbacks::send_callback(
-        nghttp2_session* /* session */, const uint8_t* data, size_t datalen, int /* flags */, void* user_arg)
+            nghttp2_session* /* session */, const uint8_t* data, size_t datalen, int /* flags */, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
         return s.send_hook(ustring{data, datalen});
     }
 
-    // int session_callbacks::on_frame_send_callback(nghttp2_session *session, const nghttp2_frame *frame, void
-    // *user_arg)
+    // int session_callbacks::on_frame_send_callback(nghttp2_session *session, const nghttp2_frame
+    // *frame, void *user_arg)
     // {
     //     log->debug("{} called", __PRETTY_FUNCTION__);
     //     auto &s = _get_session(user_arg);
     // }
 
     int session_callbacks::on_data_chunk_recv_callback(
-        nghttp2_session* session,
-        uint8_t /* flags */,
-        int32_t stream_id,
-        const uint8_t* data,
-        size_t datalen,
-        void* /* user_arg */)
+            nghttp2_session* session,
+            uint8_t /* flags */,
+            int32_t stream_id,
+            const uint8_t* data,
+            size_t datalen,
+            void* /* user_arg */)
     {
         log->debug("{} called", __PRETTY_FUNCTION__);
         auto s = _get_stream(session, stream_id);
@@ -100,7 +111,7 @@ namespace wshttp
     }
 
     int session_callbacks::on_frame_recv_callback(
-        nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
+            nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
@@ -108,7 +119,7 @@ namespace wshttp
     }
 
     int session_callbacks::on_stream_close_callback(
-        nghttp2_session* /* session */, int32_t stream_id, uint32_t error_code, void* user_arg)
+            nghttp2_session* /* session */, int32_t stream_id, uint32_t error_code, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
@@ -117,14 +128,14 @@ namespace wshttp
 
     // called when nghttp2 emits single header name/value pair
     int session_callbacks::on_header_callback(
-        nghttp2_session* /* session */,
-        const nghttp2_frame* frame,
-        const uint8_t* name,
-        size_t namelen,
-        const uint8_t* value,
-        size_t valuelen,
-        uint8_t /* flags */,
-        void* user_arg)
+            nghttp2_session* /* session */,
+            const nghttp2_frame* frame,
+            const uint8_t* name,
+            size_t namelen,
+            const uint8_t* value,
+            size_t valuelen,
+            uint8_t /* flags */,
+            void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
@@ -132,7 +143,7 @@ namespace wshttp
     }
 
     int session_callbacks::on_begin_headers_callback(
-        nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
+            nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
@@ -242,15 +253,15 @@ namespace wshttp
                 throw std::runtime_error{"Failed to emplace SSL pointer for new inbound session"};
 
             _bev.reset(bufferevent_openssl_socket_new(
-                _ep._loop->loop().get(),
-                _fd,
-                _ssl.get(),
-                BUFFEREVENT_SSL_ACCEPTING,
-                BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
+                    _ep._loop->loop().get(),
+                    _fd,
+                    _ssl.get(),
+                    BUFFEREVENT_SSL_ACCEPTING,
+                    BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
 
             if (not _bev)
-                throw std::runtime_error{
-                    "Failed to create bufferevent socket for inbound TLS session: {}"_format(detail::current_error())};
+                throw std::runtime_error{"Failed to create bufferevent socket for inbound TLS session: {}"_format(
+                        detail::current_error())};
 
             bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 
@@ -259,7 +270,7 @@ namespace wshttp
             int val = 1;
             if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
                 throw std::runtime_error{
-                    "Failed to set TCP_NODELAY on inbound session TLS socket: {}"_format(detail::current_error())};
+                        "Failed to set TCP_NODELAY on inbound session TLS socket: {}"_format(detail::current_error())};
 
             log->debug("Inbound session has fd: {}", _fd);
 
@@ -268,12 +279,16 @@ namespace wshttp
 
             if (getsockname(_fd, &_laddr, &len) < 0)
                 throw std::runtime_error{"Failed to get local socket address for incoming (remote: {}): {}, {}"_format(
-                    _path.remote(), detail::current_error(), errno)};
+                        _path.remote(), detail::current_error(), errno)};
 
             _path._local = ip_address{&_laddr};
 
             bufferevent_setcb(
-                _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
+                    _bev.get(),
+                    session_callbacks::read_cb,
+                    session_callbacks::write_cb,
+                    session_callbacks::event_cb,
+                    this);
 
             bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
@@ -291,25 +306,29 @@ namespace wshttp
                 throw std::runtime_error{"Failed to emplace SSL pointer for new outbound session"};
 
             _bev.reset(bufferevent_openssl_socket_new(
-                _ep._loop->loop().get(),
-                _fd,
-                _ssl.get(),
-                BUFFEREVENT_SSL_CONNECTING,
-                BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
+                    _ep._loop->loop().get(),
+                    _fd,
+                    _ssl.get(),
+                    BUFFEREVENT_SSL_CONNECTING,
+                    BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
 
             if (not _bev)
-                throw std::runtime_error{
-                    "Failed to create bufferevent socket for outbound TLS session: {}"_format(detail::current_error())};
+                throw std::runtime_error{"Failed to create bufferevent socket for outbound TLS session: {}"_format(
+                        detail::current_error())};
 
             bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 
             bufferevent_setcb(
-                _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
+                    _bev.get(),
+                    session_callbacks::read_cb,
+                    session_callbacks::write_cb,
+                    session_callbacks::event_cb,
+                    this);
 
             bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
-            if (bufferevent_socket_connect_hostname(_bev.get(), *_ep._dns, AF_INET, get_uri().host().data(), HTTPS_PORT)
-                != 0)
+            if (bufferevent_socket_connect_hostname(
+                        _bev.get(), *_ep._dns, AF_INET, get_uri().host().data(), HTTPS_PORT) != 0)
                 throw std::runtime_error{"Could not connect to remote host: {}"_format(detail::current_error())};
 
             log->info("Successfully configured outbound session; path: {}", _path);
@@ -363,7 +382,7 @@ namespace wshttp
         nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, session_callbacks::on_frame_recv_callback);
 
         nghttp2_session_callbacks_set_on_begin_headers_callback(
-            callbacks, session_callbacks::on_begin_headers_callback);
+                callbacks, session_callbacks::on_begin_headers_callback);
 
         nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
 
@@ -392,14 +411,14 @@ namespace wshttp
         int val = 1;
         if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
             throw std::runtime_error{
-                "Failed to set TCP_NODELAY on outbound session TLS socket: {}"_format(detail::current_error())};
+                    "Failed to set TCP_NODELAY on outbound session TLS socket: {}"_format(detail::current_error())};
 
         sockaddr _laddr{};
         socklen_t len;
 
         if (getsockname(_fd, &_laddr, &len) < 0)
             throw std::runtime_error{"Failed to get local socket address for outbound (host: {}): {}, {}"_format(
-                _host, detail::current_error(), errno)};
+                    _host, detail::current_error(), errno)};
 
         _path._local = ip_address{&_laddr};
 
@@ -417,12 +436,12 @@ namespace wshttp
         nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, session_callbacks::on_frame_recv_callback);
 
         nghttp2_session_callbacks_set_on_begin_headers_callback(
-            callbacks, session_callbacks::on_begin_headers_callback);
+                callbacks, session_callbacks::on_begin_headers_callback);
 
         nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
 
         nghttp2_session_callbacks_set_on_data_chunk_recv_callback(
-            callbacks, session_callbacks::on_data_chunk_recv_callback);
+                callbacks, session_callbacks::on_data_chunk_recv_callback);
         // nghttp2_session_callbacks_set_before_frame_send_callback(callbacks, nullptr);
         // nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, nullptr);
         // nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, nullptr);
@@ -463,8 +482,6 @@ namespace wshttp
             throw std::runtime_error{"Failed to submit outbound session settings: {}"_format(nghttp2_strerror(rv))};
 
         log->info("Outbound session successfully submitted nghttp2 settings!");
-
-        
     }
 
     int inbound_session::stream_close_hook(int32_t stream_id, uint32_t error_code)

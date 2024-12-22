@@ -1,6 +1,5 @@
 #pragma once
 
-#include "concepts.hpp"
 #include "loop.hpp"
 
 namespace wshttp
@@ -23,13 +22,15 @@ namespace wshttp
 
             int main_lookup(struct evdns_server_request* req, struct evdns_server_question* q);
 
-            template <concepts::dns_base T>
+            template <typename T>
+                requires std::same_as<T, ::evdns_base>
             operator const T*() const
             {
                 return _evdns.get();
             }
 
-            template <concepts::dns_base T>
+            template <typename T>
+                requires std::same_as<T, ::evdns_base>
             operator T*()
             {
                 return _evdns.get();

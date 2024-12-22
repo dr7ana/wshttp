@@ -10,9 +10,10 @@ int main(int argc, char* argv[])
 
     std::string log_level = "debug";
 
-    auto cli = session.cli()
-        | Opt(log_level, "level")["--log-level"](
-                   "log level to apply to the test run (one of trace, debug, info, warn, error, or critical)");
+    auto cli = session.cli() | Opt(log_level, "level")["--log-level"](
+                                       "log level to apply to the test run (one of trace, debug, "
+                                       "info, warn, error, or "
+                                       "critical)");
 
     session.cli(cli);
 

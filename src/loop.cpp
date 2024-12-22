@@ -40,8 +40,8 @@ namespace wshttp
     timeval loop_time_to_timeval(std::chrono::microseconds t)
     {
         return timeval{
-            .tv_sec = static_cast<decltype(timeval::tv_sec)>(t / 1s),
-            .tv_usec = static_cast<decltype(timeval::tv_usec)>((t % 1s) / 1us)};
+                .tv_sec = static_cast<decltype(timeval::tv_sec)>(t / 1s),
+                .tv_usec = static_cast<decltype(timeval::tv_usec)>((t % 1s) / 1us)};
     }
 
     void loop_callbacks::exec_iterative(int /* fd */, short /* what */, void* user_arg)
@@ -127,12 +127,12 @@ namespace wshttp
     }
 
     void ev_watcher::init_event(
-        const loop_ptr& _loop,
-        std::chrono::microseconds _t,
-        std::function<void()> task,
-        bool one_off,
-        bool start_immediately,
-        bool fixed_interval)
+            const loop_ptr& _loop,
+            std::chrono::microseconds _t,
+            std::function<void()> task,
+            bool one_off,
+            bool start_immediately,
+            bool fixed_interval)
     {
         f = (one_off or not fixed_interval) ? std::move(task) : [this, func = std::move(task)]() mutable {
             func();
@@ -143,27 +143,27 @@ namespace wshttp
         interval = loop_time_to_timeval(_t);
 
         ev.reset(event_new(
-            _loop.get(),
-            -1,
-            0,
-            [](evutil_socket_t, short, void* s) {
-                try
-                {
-                    auto* self = reinterpret_cast<ev_watcher*>(s);
-                    if (not self->f)
+                _loop.get(),
+                -1,
+                0,
+                [](evutil_socket_t, short, void* s) {
+                    try
                     {
-                        log->critical("Ticker does not have a callback to execute!");
-                        return;
+                        auto* self = reinterpret_cast<ev_watcher*>(s);
+                        if (not self->f)
+                        {
+                            log->critical("Ticker does not have a callback to execute!");
+                            return;
+                        }
+                        // execute callback
+                        self->f();
                     }
-                    // execute callback
-                    self->f();
-                }
-                catch (const std::exception& e)
-                {
-                    log->critical("Ticker caught exception: {}", e.what());
-                }
-            },
-            this));
+                    catch (const std::exception& e)
+                    {
+                        log->critical("Ticker caught exception: {}", e.what());
+                    }
+                },
+                this));
 
         if ((one_off or start_immediately) and not start())
             log->critical("Failed to immediately start one-off event!");
@@ -219,7 +219,7 @@ namespace wshttp
         static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
 
         log->trace(
-            "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
+                "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
 
         std::unique_ptr<event_config, decltype(&event_config_free)> ev_conf{event_config_new(), event_config_free};
         event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_PRECISE_TIMER);
@@ -322,14 +322,14 @@ namespace wshttp
     void event_loop::setup_job_waker()
     {
         job_waker.reset(event_new(
-            ev_loop.get(),
-            -1,
-            0,
-            [](evutil_socket_t, short, void* self) {
-                log->trace("processing job queue");
-                static_cast<event_loop*>(self)->process_job_queue();
-            },
-            this));
+                ev_loop.get(),
+                -1,
+                0,
+                [](evutil_socket_t, short, void* self) {
+                    log->trace("processing job queue");
+                    static_cast<event_loop*>(self)->process_job_queue();
+                },
+                this));
         assert(job_waker);
     }
 

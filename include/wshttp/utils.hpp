@@ -2,7 +2,6 @@
 
 extern "C"
 {
-#include <arpa/inet.h>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/bufferevent_ssl.h>
@@ -10,8 +9,11 @@ extern "C"
 #include <event2/dns.h>
 #include <event2/dns_struct.h>
 #include <event2/event.h>
+#include <event2/http.h>
 #include <event2/listener.h>
 #include <event2/thread.h>
+
+#include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <nghttp2/nghttp2.h>
 #include <openssl/conf.h>

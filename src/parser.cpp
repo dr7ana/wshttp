@@ -5,7 +5,7 @@
 
 namespace wshttp
 {
-    auto parser = url_parser::make();
+    std::shared_ptr<url_parser> parser = url_parser::make();
 
     std::shared_ptr<url_parser> url_parser::make()
     {
@@ -18,14 +18,14 @@ namespace wshttp
     uri url_parser::extract()
     {
         return uri{
-            _url()->get_protocol(),
-            _url()->get_username(),
-            _url()->get_host(),
-            _url()->get_port(),
-            _url()->get_pathname(),
-            _url()->get_search(),
-            _url()->get_hash(),
-            _url()->get_href()};
+                _url()->get_protocol(),
+                _url()->get_username(),
+                _url()->get_host(),
+                _url()->get_port(),
+                _url()->get_pathname(),
+                _url()->get_search(),
+                _url()->get_hash(),
+                _url()->get_href()};
     }
 
     bool url_parser::_parse()
@@ -39,9 +39,9 @@ namespace wshttp
             return false;
         }
 
-        if (not _url()->set_protocol(https_proto))
+        if (auto proto = _url()->get_protocol(); proto != HTTP_SCHEME and proto != HTTPS_SCHEME)
         {
-            log->critical("Something serious went wrong setting protocol:{} on url input: {}", https_proto, *_data);
+            log->critical("Invalid protocol (input: {}); must be either `http` or `https`", proto);
             return false;
         }
 

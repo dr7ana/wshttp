@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-CLANG_FORMAT_DESIRED_VERSION=16
+set -e
+
+CLANG_FORMAT_DESIRED_VERSION=17
 
 binary=$(command -v clang-format-$CLANG_FORMAT_DESIRED_VERSION 2>/dev/null)
 if [ $? -ne 0 ]; then
@@ -23,8 +25,10 @@ cd "$(dirname $0)/../"
 readarray -t sources < <(find include src tests | grep -E '\.([hc](pp)?)$' | grep -v '\#\|Catch2\|CLI11')
 if [ "$1" = "verify" ] ; then
     if [ $($binary --output-replacements-xml "${sources[@]}"  | grep '</replacement>' | wc -l) -ne 0 ] ; then
+        echo "Error"
         exit 2
     fi
 else
     $binary -i "${sources[@]}" &> /dev/null
+    echo "Done formatting!"
 fi

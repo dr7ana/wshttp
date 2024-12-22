@@ -65,6 +65,6 @@ namespace std
     template <>
     struct hash<wshttp::node>
     {
-        size_t operator()(const wshttp::node& n) const noexcept { return hash<string_view>{}(n.href()); };
+        size_t operator()(const wshttp::node& n) const noexcept { return hash<string_view>{}(n.href()); }
     };
 }  // namespace std

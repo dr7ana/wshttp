@@ -1,6 +1,7 @@
 #pragma once
 
 #include <CLI/CLI.hpp>
+
 #include <wshttp.hpp>
 
 #include <csignal>

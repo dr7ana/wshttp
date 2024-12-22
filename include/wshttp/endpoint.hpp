@@ -29,10 +29,10 @@ namespace wshttp
         friend class dns::server;
 
         template <typename... Opt>
-        explicit endpoint(std::shared_ptr<event_loop> ev_loop, Opt&&... opts)
-            : _loop{std::move(ev_loop)},
-              _dns{_loop->template make_shared<dns::server>(*this)},
-              client_id{++next_client_id}
+        explicit endpoint(std::shared_ptr<event_loop> ev_loop, Opt&&... opts) :
+                _loop{std::move(ev_loop)},
+                _dns{_loop->template make_shared<dns::server>(*this)},
+                client_id{++next_client_id}
         {
             require_ssl_creds<Opt...>();
 
@@ -87,7 +87,7 @@ namespace wshttp
 
                 if (not b)
                     throw std::invalid_argument{
-                        "Cannot create tcp-listener at port {} -- listener already exists!"_format(port)};
+                            "Cannot create tcp-listener at port {} -- listener already exists!"_format(port)};
 
                 itr->second = make_shared<listener>(*this, port);
 
@@ -110,7 +110,7 @@ namespace wshttp
 
                 if (not b)
                     throw std::invalid_argument{
-                        "Cannot create outbound node for input: {} -- node already exists!"_format(url)};
+                            "Cannot create outbound node for input: {} -- node already exists!"_format(url)};
 
                 itr->second = make_shared<node>(*this, std::move(_uri), std::forward<Opt>(opts)...);
 
@@ -181,8 +181,9 @@ namespace wshttp
         static constexpr void require_ssl_creds()
         {
             static_assert(
-                (0 + ... + std::is_convertible_v<std::remove_cvref_t<Opt>, std::shared_ptr<ssl_creds>>) == 1,
-                "Endpoint construction requires exactly one std::shared_ptr<ssl_creds> argument");
+                    (0 + ... + std::is_same_v<std::remove_cvref_t<Opt>, std::shared_ptr<ssl_creds>>) == 1,
+                    "Endpoint construction requires exactly one std::shared_ptr<ssl_creds> "
+                    "argument");
         }
     };
 }  //  namespace wshttp

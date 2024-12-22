@@ -33,11 +33,11 @@ namespace wshttp
 
             if (auto rv = evutil_make_socket_nonblocking(_fd); rv < 0)
                 throw std::runtime_error{
-                    "Failed to non-block outbound node socket: {}"_format(detail::current_error())};
+                        "Failed to non-block outbound node socket: {}"_format(detail::current_error())};
 
             if (_fd < 0)
                 throw std::runtime_error{
-                    "Could not create socket for outbound node: {}"_format(detail::current_error())};
+                        "Could not create socket for outbound node: {}"_format(detail::current_error())};
 
             if (_local->is_ipv4())
             {

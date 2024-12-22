@@ -13,13 +13,15 @@ namespace wshttp
 
     struct ssl_creds
     {
-        explicit ssl_creds(const std::string_view& keyfile, const std::string_view& certfile)
-            : _keyfile{keyfile}, _certfile{certfile}
+      private:
+        explicit ssl_creds(const std::string_view& keyfile, const std::string_view& certfile) :
+                _keyfile{keyfile}, _certfile{certfile}
         {
             if (_keyfile.empty() or _certfile.empty())
                 throw std::invalid_argument{"Empty paths"};
         }
 
+      public:
         static std::shared_ptr<ssl_creds> make(const std::string_view& keyfile, const std::string_view& certfile)
         {
             return std::shared_ptr<ssl_creds>{new ssl_creds{keyfile, certfile}};
@@ -28,9 +30,6 @@ namespace wshttp
         const fs::path _keyfile;
         const fs::path _certfile;
     };
-
-    class app_context;
-    using ctx_pair = std::pair<std::shared_ptr<app_context>, std::shared_ptr<app_context>>;
 
     class app_context
     {
@@ -61,6 +60,8 @@ namespace wshttp
 
         void _init();
 
+        void _set_sslopts(bool outbound);
+
         void _init_inbound();
         void _init_inbound(const char* _keyfile, const char* _certfile);
 
@@ -79,6 +80,6 @@ namespace std
             // TODO:
             (void)c;
             return {};
-        };
+        }
     };
 }  //  namespace std

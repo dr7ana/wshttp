@@ -29,12 +29,12 @@ namespace wshttp
         std::function<void()> f;
 
         void init_event(
-            const loop_ptr& _loop,
-            std::chrono::microseconds _t,
-            std::function<void()> task,
-            bool one_off = false,
-            bool start_immediately = true,
-            bool fixed_interval = false);
+                const loop_ptr& _loop,
+                std::chrono::microseconds _t,
+                std::function<void()> task,
+                bool one_off = false,
+                bool start_immediately = true,
+                bool fixed_interval = false);
 
         ev_watcher() = default;
 
@@ -135,20 +135,23 @@ namespace wshttp
             return fut.get();
         }
 
-        /** This invocation of `call_every` will return an EventHandler object from which the application can start and stop
-            the repeated event. It is NOT tied to the lifetime of the caller via a weak_ptr.
+        /** This invocation of `call_every` will return an EventHandler object from which the
+           application can start and stop the repeated event. It is NOT tied to the lifetime of the
+           caller via a weak_ptr.
 
             Configurable parameters:
                 - start_immediately : will call ::event_add() before returning the ticker
                 - wait :
-                    - if FALSE (default behavior), the interval will not wait for the event to complete. will attempt to
-                        execute every `interval`, regardless of how long the event itself takes.
-                    - if TRUE, the interval will wait for the event to complete before beginning. It will wait the entire
-                        `interval` after finishing execution of the event before attempting execution again.
+                    - if FALSE (default behavior), the interval will not wait for the event to
+           complete. will attempt to execute every `interval`, regardless of how long the event
+           itself takes.
+                    - if TRUE, the interval will wait for the event to complete before beginning. It
+           will wait the entire `interval` after finishing execution of the event before attempting
+           execution again.
         */
         template <typename Callable>
         [[nodiscard]] std::shared_ptr<ev_watcher> call_every(
-            std::chrono::microseconds interval, Callable&& f, bool start_immediately = true, bool wait = false)
+                std::chrono::microseconds interval, Callable&& f, bool start_immediately = true, bool wait = false)
         {
             return _call_every(interval, std::forward<Callable>(f), event_loop::loop_id, start_immediately, wait);
         }
@@ -169,7 +172,8 @@ namespace wshttp
                         func();
                     else
                         add_oneshot_event(
-                            std::chrono::duration_cast<std::chrono::microseconds>(target_time - now), std::move(func));
+                                std::chrono::duration_cast<std::chrono::microseconds>(target_time - now),
+                                std::move(func));
                 });
             }
         }
@@ -193,14 +197,14 @@ namespace wshttp
             auto& h = *handler;
 
             h.init_event(
-                loop(),
-                delay,
-                [hndlr = std::move(handler), func = std::move(hook)]() mutable {
-                    auto h = std::move(hndlr);
-                    func();
-                    h.reset();
-                },
-                true);
+                    loop(),
+                    delay,
+                    [hndlr = std::move(handler), func = std::move(hook)]() mutable {
+                        auto h = std::move(hndlr);
+                        func();
+                        h.reset();
+                    },
+                    true);
         }
 
         void clear_old_tickers();
@@ -216,9 +220,7 @@ namespace wshttp
         template <typename T>
         auto loop_deleter()
         {
-            return [this](T* ptr) {
-                call([ptr] { delete ptr; });
-            };
+            return [this](T* ptr) { call([ptr] { delete ptr; }); };
         }
 
         // Returns a pointer deleter that defers invocation of a custom deleter to the event loop
@@ -256,11 +258,11 @@ namespace wshttp
 
         template <typename Callable>
         [[nodiscard]] std::shared_ptr<ev_watcher> _call_every(
-            std::chrono::microseconds interval,
-            Callable&& f,
-            caller_id_t _id,
-            bool start_immediately,
-            bool fixed_interval)
+                std::chrono::microseconds interval,
+                Callable&& f,
+                caller_id_t _id,
+                bool start_immediately,
+                bool fixed_interval)
         {
             auto h = make_handler(_id);
 

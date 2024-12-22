@@ -1,12 +1,8 @@
 #pragma once
 
-#include "concepts.hpp"
+#include "types.hpp"
 
-// #include <fmt/core.h>
 #include <fmt/format.h>
-// #include <fmt/ranges.h>
-// #include <spdlog/cfg/env.h>
-// #include <spdlog/common.h>
 #include <spdlog/sinks/dist_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
@@ -14,6 +10,42 @@
 #include <source_location>
 
 using namespace std::literals;
+
+namespace wshttp
+{
+    // Types can opt-in to being fmt-formattable by ensuring they have a ::to_string() method
+    // defined
+    template <typename T>
+    concept to_string_formattable = T::to_string_formattable && requires(T a) {
+        {
+            a.to_string()
+        } -> std::convertible_to<std::string_view>;
+    };
+}  // namespace wshttp
+
+namespace fmt
+{
+    template <wshttp::to_string_formattable T>
+    struct formatter<T, char> : formatter<std::string_view>
+    {
+        template <typename FormatContext>
+        auto format(const T& val, FormatContext& ctx) const
+        {
+            return formatter<std::string_view>::format(val.to_string(), ctx);
+        }
+    };
+
+    template <wshttp::const_span_type T>
+    struct formatter<T, char> : formatter<std::string_view>
+    {
+        template <typename FormatContext>
+        auto format(const T& val, FormatContext& ctx) const
+        {
+            return formatter<std::string_view>::format(
+                    std::string_view{reinterpret_cast<const char*>(val.data()), val.size()}, ctx);
+        }
+    };
+}  // namespace fmt
 
 namespace wshttp
 {
@@ -36,8 +68,9 @@ namespace wshttp
         {
             consteval fmt_wrapper() = default;
 
-            /// Calling on this object forwards all the values to fmt::format, using the format string
-            /// as provided during type definition (via the "..."_format user-defined function).
+            /// Calling on this object forwards all the values to fmt::format, using the format
+            /// string as provided during type definition (via the "..."_format user-defined
+            /// function).
             template <typename... T>
             constexpr auto operator()(T&&... args) &&
             {
@@ -46,14 +79,11 @@ namespace wshttp
         };
     }  //  namespace detail
 
-    namespace literals
+    template <detail::string_literal Format>
+    inline consteval auto operator""_format()
     {
-        template <detail::string_literal Format>
-        inline consteval auto operator""_format()
-        {
-            return detail::fmt_wrapper<Format>{};
-        }
-    }  // namespace literals
+        return detail::fmt_wrapper<Format>{};
+    }
 
     class Logger
     {
@@ -146,21 +176,51 @@ namespace wshttp
         spdlog::level::level_enum _translate_level(std::string_view level);
     };
 
+    class Logger;
+
     // global logger
     extern std::shared_ptr<Logger> log;
     extern std::shared_ptr<spdlog::sinks::dist_sink_mt> sink;
 
-}  //  namespace wshttp
+    template <typename T>
+    concept string_view_convertible =
+            std::convertible_to<T, std::string_view> || std::convertible_to<T, std::basic_string_view<unsigned char>> ||
+            std::convertible_to<T, std::basic_string_view<std::byte>>;
 
-namespace fmt
-{
-    template <wshttp::concepts::to_string_formattable T>
-    struct formatter<T, char> : formatter<std::string_view>
+    struct buffer_printer
     {
-        template <typename FormatContext>
-        auto format(const T& val, FormatContext& ctx) const
-        {
-            return formatter<std::string_view>::format(val.to_string(), ctx);
-        }
+        std::basic_string_view<std::byte> buf;
+
+        template <typename T>
+            requires const_span_convertible<T> || string_view_convertible<T>
+        explicit buffer_printer(T buf) : buffer_printer{buf.data(), buf.size()}
+        {}
+
+        // Constructed from any type of string_view<T> for a single-byte T (char, std::byte,
+        // uint8_t, etc.)
+        template <enc::basic_char T>
+        explicit buffer_printer(std::basic_string_view<T> buf) :
+                buf{reinterpret_cast<const std::byte*>(buf.data()), buf.size()}
+        {}
+
+        // Constructed from any type of lvalue string<T> for a single-byte T (char, std::byte,
+        // uint8_t, etc.
+        template <enc::basic_char T>
+        explicit buffer_printer(const std::basic_string<T>& buf) : buffer_printer(std::basic_string_view<T>{buf})
+        {}
+
+        // *Not* constructable from a string<T> rvalue (no taking ownership)
+        template <enc::basic_char T>
+        explicit buffer_printer(std::basic_string<T>&& buf) = delete;
+
+        // Constructable from a (T*, size) argument pair, for byte-sized T's.
+        template <enc::basic_char T>
+        explicit buffer_printer(const T* data, size_t size) : buffer_printer(std::basic_string_view<T>{data, size})
+        {}
+
+        std::string to_string() const;
+
+        static constexpr bool to_string_formattable = true;
     };
-}  // namespace fmt
+
+}  //  namespace wshttp

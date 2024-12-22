@@ -5,23 +5,22 @@
 namespace wshttp
 {
     uri::uri(
-        const std::string_view& _s,
-        const std::string_view& _u,
-        const std::string_view& _h,
-        const std::string_view& _p,
-        const std::string_view& _pn,
-        const std::string_view& _q,
-        const std::string_view& _f,
-        const std::string_view& _hr)
-        : _fields{
-            std::string{_s},
-            std::string{_u},
-            std::string{_h},
-            std::string{_p},
-            std::string{_pn},
-            std::string{_q},
-            std::string{_f},
-            std::string{_hr}}
+            const std::string_view& _s,
+            const std::string_view& _u,
+            const std::string_view& _h,
+            const std::string_view& _p,
+            const std::string_view& _pn,
+            const std::string_view& _q,
+            const std::string_view& _f,
+            const std::string_view& _hr) :
+            _fields{std::string{_s},
+                    std::string{_u},
+                    std::string{_h},
+                    std::string{_p},
+                    std::string{_pn},
+                    std::string{_q},
+                    std::string{_f},
+                    std::string{_hr}}
     {}
 
     uri uri::parse(std::string url)
@@ -40,19 +39,13 @@ namespace wshttp
         log->info("fragment:{}", _fields[_fragment]);
     }
 
-    ipv4::ipv4(struct in_addr* a)
-    {
-        std::memmove(&addr, &a->s_addr, sizeof(a->s_addr));
-        enc::big_to_host_inplace(addr);
-    }
-
     ipv4::ipv4(const std::string& str)
     {
         detail::parse_addr(AF_INET, &addr, str);
         enc::big_to_host_inplace(addr);
     }
 
-    in_addr ipv4::to_in4() const
+    in_addr ipv4::to_inaddr() const
     {
         in_addr a;
         a.s_addr = enc::host_to_big(addr);
@@ -73,13 +66,6 @@ namespace wshttp
         return "{}"_format(buf);
     }
 
-    ipv6::ipv6(const struct in6_addr* a)
-    {
-        std::memmove(&addr, &a->s6_addr, sizeof(a->s6_addr));
-        for (int i = 0; i < 8; ++i)
-            enc::big_to_host_inplace(addr[i]);
-    }
-
     ipv6::ipv6(const std::string& str)
     {
         detail::parse_addr(AF_INET6, &addr, str);
@@ -92,12 +78,12 @@ namespace wshttp
         return *this == ipv6_anyaddr;
     }
 
-    in6_addr ipv6::to_in6() const
+    in6_addr ipv6::to_in6addr() const
     {
-        in6_addr ret;
-        std::memmove(&ret.s6_addr, &addr, sizeof(ret.s6_addr));
+        in6_addr ret{};
+        std::ranges::copy(addr, ret.s6_addr16);
         for (int i = 0; i < 8; ++i)
-            enc::big_to_host_inplace(ret.s6_addr[i]);
+            enc::host_to_big_inplace(ret.s6_addr16[i]);
 
         return ret;
     }
@@ -121,20 +107,18 @@ namespace wshttp
     {
         if (in->sa_family == AF_INET)
         {
-            auto& in4 = *reinterpret_cast<sockaddr_in*>(in);
-            _ip = ipv4{&in4.sin_addr};
-            _port = in4.sin_port;
+            auto* in4 = reinterpret_cast<sockaddr_in*>(in);
+            _ip = ipv4{in4};
+            _port = enc::big_to_host(in4->sin_port);
         }
         else if (in->sa_family == AF_INET6)
         {
-            auto& in6 = *reinterpret_cast<sockaddr_in6*>(in);
-            _ip = ipv6{&in6.sin6_addr};
-            _port = in6.sin6_port;
+            auto* in6 = reinterpret_cast<sockaddr_in6*>(in);
+            _ip = ipv6{in6};
+            _port = enc::big_to_host(in6->sin6_port);
         }
         else
             throw std::runtime_error{"Failed to understand incoming address sa_family"};
-
-        enc::big_to_host_inplace(_port);
     }
 
     bool ip_address::is_anyaddr() const

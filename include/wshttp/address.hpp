@@ -1,17 +1,16 @@
 #pragma once
 
-#include "concepts.hpp"
+#include "encoding.hpp"
 #include "types.hpp"
 
 #include <variant>
 
 namespace wshttp
 {
-    static constexpr auto URI_FIELDS{8};
+    static constexpr size_t URI_FIELDS{8};
     static constexpr uint16_t HTTPS_PORT{443};
     static constexpr auto HTTPS_SCHEME = "https:"sv;
-
-    using ip_v = std::variant<ipv4, ipv6>;
+    static constexpr auto HTTP_SCHEME = "http:"sv;
 
     struct uri
     {
@@ -23,19 +22,19 @@ namespace wshttp
         static enum { _scheme, _userinfo, _host, _port, _pathname, _query, _fragment, _href } UF;
 
         explicit uri(
-            const std::string_view& _s,
-            const std::string_view& _u,
-            const std::string_view& _h,
-            const std::string_view& _p,
-            const std::string_view& _pn,
-            const std::string_view& _q,
-            const std::string_view& _f,
-            const std::string_view& _hr);
+                const std::string_view& _s,
+                const std::string_view& _u,
+                const std::string_view& _h,
+                const std::string_view& _p,
+                const std::string_view& _pn,
+                const std::string_view& _q,
+                const std::string_view& _f,
+                const std::string_view& _hr);
 
       public:
         std::array<std::string, URI_FIELDS> _fields{};
 
-        template <concepts::cspan_compatible T>
+        template <const_span_convertible T>
         static uri parse(T u)
         {
             return uri::parse(std::string{reinterpret_cast<const char*>(u.data()), u.size()});
@@ -69,18 +68,18 @@ namespace wshttp
 
         constexpr ipv4() = default;
 
-        explicit ipv4(struct in_addr* a);
+        explicit constexpr ipv4(const struct sockaddr_in* in) : addr{std::move(in->sin_addr.s_addr)}
+        {
+            enc::big_to_host_inplace(addr);
+        }
 
         explicit ipv4(const std::string& str);
 
-        constexpr ipv4(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
-            : addr{uint32_t{a} << 24 | uint32_t{b} << 16 | uint32_t{c} << 8 | uint32_t{d}}
+        constexpr ipv4(uint8_t a, uint8_t b, uint8_t c, uint8_t d) :
+                addr{uint32_t{a} << 24 | uint32_t{b} << 16 | uint32_t{c} << 8 | uint32_t{d}}
         {}
 
-        std::string to_string() const;
-        static constexpr bool to_string_formattable = true;
-
-        in_addr to_in4() const;
+        in_addr to_inaddr() const;
 
         bool is_anyaddr() const;
 
@@ -89,6 +88,9 @@ namespace wshttp
         constexpr bool operator==(const ipv4& a) const { return (addr <=> a.addr) == 0; }
 
         constexpr bool operator==(const in_addr& a) const { return (addr <=> a.s_addr) == 0; }
+
+        std::string to_string() const;
+        static constexpr bool to_string_formattable = true;
     };
 
     struct ipv6
@@ -97,38 +99,47 @@ namespace wshttp
 
         constexpr ipv6() = default;
 
-        // Network order in6_addr constructor
-        explicit ipv6(const struct in6_addr* a);
+        explicit constexpr ipv6(const struct sockaddr_in6* in6)
+        {
+            std::ranges::move(in6->sin6_addr.s6_addr16, addr.begin());
+            for (int i = 0; i < 8; ++i)
+                enc::big_to_host_inplace(addr[i]);
+        }
 
         explicit ipv6(const std::string& str);
 
         explicit constexpr ipv6(
-            uint16_t a,
-            uint16_t b = 0x0000,
-            uint16_t c = 0x0000,
-            uint16_t d = 0x0000,
-            uint16_t e = 0x0000,
-            uint16_t f = 0x0000,
-            uint16_t g = 0x0000,
-            uint16_t h = 0x0000)
-            : addr{a, b, c, d, e, f, g, h}
+                uint16_t a,
+                uint16_t b = 0x0000,
+                uint16_t c = 0x0000,
+                uint16_t d = 0x0000,
+                uint16_t e = 0x0000,
+                uint16_t f = 0x0000,
+                uint16_t g = 0x0000,
+                uint16_t h = 0x0000) :
+                addr{a, b, c, d, e, f, g, h}
         {}
 
-        in6_addr to_in6() const;
+        in6_addr to_in6addr() const;
 
         bool is_anyaddr() const;
-
-        std::string to_string() const;
-        static constexpr bool to_string_formattable = true;
 
         constexpr auto operator<=>(const ipv6& a) const { return addr <=> a.addr; }
 
         constexpr bool operator==(const ipv6& a) const { return (addr <=> a.addr) == 0; }
+
+        std::string to_string() const;
+        static constexpr bool to_string_formattable = true;
     };
 
     inline constexpr ipv4 ipv4_anyaddr(0, 0, 0, 0);
 
     inline constexpr ipv6 ipv6_anyaddr(0, 0, 0, 0, 0, 0, 0, 0);
+
+    template <typename ip_t>
+    concept ip_type = std::same_as<ip_t, ipv4> || std::same_as<ip_t, ipv6>;
+
+    using ip_v = std::variant<ipv4, ipv6>;
 
     struct ip_address
     {
@@ -136,7 +147,7 @@ namespace wshttp
 
         explicit ip_address(struct sockaddr* in);
 
-        template <concepts::ip_type T>
+        template <ip_type T>
         constexpr explicit ip_address(T v4, uint16_t p) : _ip{v4}, _port{p}
         {}
 
@@ -191,9 +202,9 @@ namespace wshttp
         auto operator<=>(const ip_address& a) const { return std::tie(_ip, _port) <=> std::tie(a._ip, a._port); }
         bool operator==(const ip_address& a) const { return (*this <=> a) == 0; }
 
-        operator in_addr() const { return _ipv4().to_in4(); }
+        operator in_addr() const { return _ipv4().to_inaddr(); }
 
-        operator in6_addr() const { return _ipv6().to_in6(); }
+        operator in6_addr() const { return _ipv6().to_in6addr(); }
     };
 
     struct path

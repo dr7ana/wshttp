@@ -1,5 +1,7 @@
 #include "format.hpp"
 
+#include "internal.hpp"
+
 #include <stdexcept>
 
 namespace wshttp
@@ -31,13 +33,13 @@ namespace wshttp
     {
       private:
         static constexpr fmt::format_string<
-            std::chrono::hours::rep,
-            std::chrono::minutes::rep,
-            std::chrono::seconds::rep,
-            std::chrono::milliseconds::rep>
-            format_hours{"+{0:d}h{1:02d}m{2:02d}.{3:03d}s"},  // >= 1h
-            format_minutes{"+{1:d}m{2:02d}.{3:03d}s"},        // >= 1min
-            format_seconds{"+{2:d}.{3:03d}s"};                // < 1min
+                std::chrono::hours::rep,
+                std::chrono::minutes::rep,
+                std::chrono::seconds::rep,
+                std::chrono::milliseconds::rep>
+                format_hours{"+{0:d}h{1:02d}m{2:02d}.{3:03d}s"},  // >= 1h
+                format_minutes{"+{1:d}m{2:02d}.{3:03d}s"},        // >= 1min
+                format_seconds{"+{2:d}.{3:03d}s"};                // < 1min
 
       public:
         void format(const spdlog::details::log_msg&, const std::tm&, spdlog::memory_buf_t& dest) override
@@ -46,13 +48,13 @@ namespace wshttp
             auto elapsed = std::chrono::steady_clock::now() - started_at;
 
             dest.append(fmt::format(
-                elapsed >= 1h         ? format_hours
+                    elapsed >= 1h     ? format_hours
                     : elapsed >= 1min ? format_minutes
                                       : format_seconds,
-                std::chrono::duration_cast<std::chrono::hours>(elapsed).count(),
-                (std::chrono::duration_cast<std::chrono::minutes>(elapsed) % 1h).count(),
-                (std::chrono::duration_cast<std::chrono::seconds>(elapsed) % 1min).count(),
-                (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed) % 1s).count()));
+                    std::chrono::duration_cast<std::chrono::hours>(elapsed).count(),
+                    (std::chrono::duration_cast<std::chrono::minutes>(elapsed) % 1h).count(),
+                    (std::chrono::duration_cast<std::chrono::seconds>(elapsed) % 1min).count(),
+                    (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed) % 1s).count()));
         }
 
         std::unique_ptr<custom_flag_formatter> clone() const override
@@ -89,7 +91,8 @@ namespace wshttp
             return spdlog::level::off;
         else
             throw std::invalid_argument{
-                "Log level must be one of 'trace', 'debug', 'info', 'warn', 'err', 'critical', or 'off'"};
+                    "Log level must be one of 'trace', 'debug', 'info', 'warn', 'err', 'critical', "
+                    "or 'off'"};
     }
 
     void Logger::_logger_init(std::string s, std::string level)
@@ -109,6 +112,44 @@ namespace wshttp
     Logger::~Logger()
     {
         spdlog::shutdown();
+    }
+
+    std::string buffer_printer::to_string() const
+    {
+        auto& b = buf;
+        std::string out;
+        auto ins = std::back_inserter(out);
+        fmt::format_to(ins, "Buffer[{}/{:#x} bytes]:", b.size(), b.size());
+
+        for (size_t i = 0; i < b.size(); i += 32)
+        {
+            fmt::format_to(ins, "\n{:04x} ", i);
+
+            size_t stop = std::min(b.size(), i + 32);
+            for (size_t j = 0; j < 32; j++)
+            {
+                auto k = i + j;
+                if (j % 4 == 0)
+                    out.push_back(' ');
+                if (k >= stop)
+                    out.append("  ");
+                else
+                    fmt::format_to(ins, "{:02x}", std::to_integer<uint_fast16_t>(b[k]));
+            }
+            out.append("  ┃");
+            for (size_t j = i; j < stop; j++)
+            {
+                auto c = std::to_integer<char>(b[j]);
+                if (c == 0x00)
+                    out.append("∅");
+                else if (c < 0x20 || c > 0x7e)
+                    out.append("·");
+                else
+                    out.push_back(c);
+            }
+            out.append("┃");
+        }
+        return out;
     }
 
 }  // namespace wshttp

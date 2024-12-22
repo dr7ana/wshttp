@@ -18,6 +18,8 @@ namespace wshttp::req
                 return fields::path;
             case FIELD::status:
                 return fields::status;
+            default:
+                return fields::status;
         }
     }
 
@@ -29,28 +31,30 @@ namespace wshttp::req
                 return code::HTTP_200;
             case CODE::_404:
                 return code::HTTP_404;
+            default:
+                return code::HTTP_404;
         }
     }
 
     static nghttp2_nv make_pair(
-        const uint8_t* name, size_t namelen, const uint8_t* value, size_t valuelen, nghttp2_nv_flag flags)
+            const uint8_t* name, size_t namelen, const uint8_t* value, size_t valuelen, nghttp2_nv_flag flags)
     {
         return nghttp2_nv{
-            const_cast<uint8_t*>(name),
-            const_cast<uint8_t*>(value),
-            namelen,
-            valuelen,
-            static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
+                const_cast<uint8_t*>(name),
+                const_cast<uint8_t*>(value),
+                namelen,
+                valuelen,
+                static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
     }
 
     static nghttp2_nv make_header(FIELD f, uspan& v, nghttp2_nv_flag flags)
     {
         return nghttp2_nv{
-            const_cast<uint8_t*>(_field(f).data()),
-            const_cast<uint8_t*>(v.data()),
-            _field(f).size(),
-            v.size(),
-            static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
+                const_cast<uint8_t*>(_field(f).data()),
+                const_cast<uint8_t*>(v.data()),
+                _field(f).size(),
+                v.size(),
+                static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
     }
 
     static nghttp2_settings_entry make_setting(int32_t id, uint32_t val)

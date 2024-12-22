@@ -48,7 +48,7 @@ namespace wshttp
         }
         else
             log->info("Server successfully responded to request!");
-    };
+    }
 
     namespace dns
     {
@@ -60,7 +60,7 @@ namespace wshttp
         server::server(wshttp::endpoint& e) : _ep{e}
         {
             _evdns = _ep.template shared_ptr<evdns_base>(
-                evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_INITIALIZE_NAMESERVERS), deleters::_evdns{});
+                    evdns_base_new(_ep._loop->loop().get(), EVDNS_BASE_INITIALIZE_NAMESERVERS), deleters::_evdns{});
 
             evdns_set_log_fn([](int is_warning, const char* msg) {
                 if (is_warning)
@@ -94,9 +94,9 @@ namespace wshttp
                     throw std::runtime_error{"DNS server failed to bind UDP port: {}"_format(detail::current_error())};
 
                 _udp_bind = _ep.template shared_ptr<evdns_server_port>(
-                    evdns_add_server_port_with_base(
-                        _ep._loop->loop().get(), _udp_sock, 0, dns_callbacks::server_cb, this),
-                    deleters::_evdns_port{});
+                        evdns_add_server_port_with_base(
+                                _ep._loop->loop().get(), _udp_sock, 0, dns_callbacks::server_cb, this),
+                        deleters::_evdns_port{});
 
                 if (not _udp_bind)
                     throw std::runtime_error{"DNS server failed to add UDP port: {}"_format(detail::current_error())};
@@ -121,7 +121,7 @@ namespace wshttp
             auto name = std::string_view{q->name}, type = detail::translate_req_type(q->type);
             log->info("DNS server received {} req for: {}", type, name);
 
-            const char* res;
+            const char* res = "";
             auto is_v6 = q->type == EVDNS_TYPE_AAAA;
 
             /**

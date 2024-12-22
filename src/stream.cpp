@@ -7,13 +7,13 @@
 namespace wshttp
 {
     ssize_t stream_callbacks::file_read_callback(
-        nghttp2_session* /* session */,
-        int32_t /* stream_id */,
-        uint8_t* buf,
-        size_t length,
-        uint32_t* data_flags,
-        nghttp2_data_source* source,
-        void* /* user_data */)
+            nghttp2_session* /* session */,
+            int32_t /* stream_id */,
+            uint8_t* buf,
+            size_t length,
+            uint32_t* data_flags,
+            nghttp2_data_source* source,
+            void* /* user_data */)
     {
         auto fd = source->fd;
         ssize_t ret{-1};
@@ -36,14 +36,14 @@ namespace wshttp
         return ret;
     }
 
-    stream::stream(inbound_session& s, const session_ptr& sess, int32_t id)
-        : _s{s}, _session{sess.get(), deleters::_session{}}, dir{IO::INBOUND}, _id{id}
+    stream::stream(inbound_session& s, const session_ptr& sess, int32_t id) :
+            _s{s}, _session{sess.get(), deleters::_session{}}, dir{IO::INBOUND}, _id{id}
     {
         log->debug("Inbound stream (ID: {}) created!", _id);
     }
 
-    stream::stream(outbound_session& s, const session_ptr& sess, int32_t id)
-        : _s{s}, _session{sess.get(), deleters::_session{}}, dir{IO::OUTBOUND}, _id{id}
+    stream::stream(outbound_session& s, const session_ptr& sess, int32_t id) :
+            _s{s}, _session{sess.get(), deleters::_session{}}, dir{IO::OUTBOUND}, _id{id}
     {
         log->debug("Outbound stream (ID: {}) created!", _id);
     }

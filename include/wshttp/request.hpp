@@ -1,6 +1,5 @@
 #pragma once
 
-#include "concepts.hpp"
 #include "types.hpp"
 
 namespace wshttp
@@ -21,18 +20,18 @@ namespace wshttp
         namespace types
         {
             inline constexpr auto get = "GET"_usp;
-        }   //  namespace types
+        }  //  namespace types
 
         namespace code
         {
             inline constexpr auto HTTP_200 = "200"_usp;
             inline constexpr auto HTTP_404 = "404"_usp;
-        }  //  namespace status
+        }  // namespace code
 
         namespace errors
         {
             inline constexpr std::array<const char*, 2> HTML{
-                "<html><head><title>404</title></head>", "<body><h1>404 Not Found</h1></body></html>"};
+                    "<html><head><title>404</title></head>", "<body><h1>404 Not Found</h1></body></html>"};
         }  //  namespace errors
 
         struct headers
@@ -76,13 +75,15 @@ namespace wshttp
                 return {uspan{h.name, h.namelen}, uspan{h.value, h.valuelen}};
             }
 
-            template <concepts::nghttp2_nv_type T>
+            template <typename T>
+                requires std::same_as<T, nghttp2_nv>
             operator const T*() const
             {
                 return _hdrs.data();
             }
 
-            template <concepts::nghttp2_nv_type T>
+            template <typename T>
+                requires std::same_as<T, nghttp2_nv>
             operator T*()
             {
                 return _hdrs.data();
@@ -97,13 +98,15 @@ namespace wshttp
 
             size_t size() const { return _settings.size(); }
 
-            template <concepts::nghttp2_settings_type T>
+            template <typename T>
+                requires std::same_as<T, nghttp2_settings_entry>
             operator const T*() const
             {
                 return _settings.data();
             }
 
-            template <concepts::nghttp2_settings_type T>
+            template <typename T>
+                requires std::same_as<T, nghttp2_settings_entry>
             operator T*()
             {
                 return _settings.data();

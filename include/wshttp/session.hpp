@@ -1,7 +1,6 @@
 #pragma once
 
 #include "address.hpp"
-#include "concepts.hpp"
 #include "context.hpp"
 #include "listener.hpp"
 #include "node.hpp"
@@ -20,8 +19,8 @@ namespace wshttp
         friend struct session_callbacks;
 
       protected:
-        session_base(endpoint& e, evutil_socket_t f, path _p, bool d)
-            : _ep{e}, _fd{f}, _path{std::move(_p)}, _is_outbound{d}
+        session_base(endpoint& e, evutil_socket_t f, path _p, bool d) :
+                _ep{e}, _fd{f}, _path{std::move(_p)}, _is_outbound{d}
         {}
 
         endpoint& _ep;
@@ -72,13 +71,15 @@ namespace wshttp
         const ip_address& remote() const { return _path.remote(); }
         const path& session_path() const { return _path; }
 
-        template <concepts::nghttp2_session_type T>
+        template <typename T>
+            requires std::same_as<T, nghttp2_session>
         operator const T*() const
         {
             return _session.get();
         }
 
-        template <concepts::nghttp2_session_type T>
+        template <typename T>
+            requires std::same_as<T, nghttp2_session>
         operator T*()
         {
             return _session.get();
@@ -94,8 +95,8 @@ namespace wshttp
       public:
         inbound_session() = delete;
 
-        inbound_session(listener& l, ip_address remote, evutil_socket_t fd)
-            : session_base{l._ep, fd, path{{}, std::move(remote)}, false}, _lst{l}
+        inbound_session(listener& l, ip_address remote, evutil_socket_t fd) :
+                session_base{l._ep, fd, path{{}, std::move(remote)}, false}, _lst{l}
         {
             _init_internals();
         }
@@ -139,10 +140,10 @@ namespace wshttp
         friend struct session_callbacks;
 
       public:
-        outbound_session(node& n, evutil_socket_t fd, std::optional<ip_address> local = std::nullopt)
-            : session_base{n._ep, fd, path{local ? std::move(*local) : ip_address{}, {}}, true},
-              _n{n},
-              _host{_n._uri.host()}
+        outbound_session(node& n, evutil_socket_t fd, std::optional<ip_address> local = std::nullopt) :
+                session_base{n._ep, fd, path{local ? std::move(*local) : ip_address{}, {}}, true},
+                _n{n},
+                _host{_n._uri.host()}
         {
             _init_internals();
         }
