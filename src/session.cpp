@@ -252,6 +252,11 @@ namespace wshttp
             if (not _ssl)
                 throw std::runtime_error{"Failed to emplace SSL pointer for new inbound session"};
 
+            int val = 1;
+            if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
+                throw std::runtime_error{
+                        "Failed to set TCP_NODELAY on inbound session TLS socket: {}"_format(detail::current_error())};
+
             _bev.reset(bufferevent_openssl_socket_new(
                     _ep._loop->loop().get(),
                     _fd,
@@ -263,14 +268,16 @@ namespace wshttp
                 throw std::runtime_error{"Failed to create bufferevent socket for inbound TLS session: {}"_format(
                         detail::current_error())};
 
+            bufferevent_setcb(
+                    _bev.get(),
+                    session_callbacks::read_cb,
+                    session_callbacks::write_cb,
+                    session_callbacks::event_cb,
+                    this);
+
             bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 
-            _fd = bufferevent_getfd(_bev.get());
-
-            int val = 1;
-            if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
-                throw std::runtime_error{
-                        "Failed to set TCP_NODELAY on inbound session TLS socket: {}"_format(detail::current_error())};
+            bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
             log->debug("Inbound session has fd: {}", _fd);
 
@@ -282,15 +289,6 @@ namespace wshttp
                         _path.remote(), detail::current_error(), errno)};
 
             _path._local = ip_address{&_laddr};
-
-            bufferevent_setcb(
-                    _bev.get(),
-                    session_callbacks::read_cb,
-                    session_callbacks::write_cb,
-                    session_callbacks::event_cb,
-                    this);
-
-            bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
             log->info("Successfully configured inbound session; path: {}", _path);
         });

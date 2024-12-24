@@ -14,8 +14,7 @@ namespace wshttp
             void* user_arg)
     {
         auto& l = *static_cast<listener*>(user_arg);
-        auto remote = ip_address{addr};
-        l.create_inbound_session(std::move(remote), fd);
+        l.create_inbound_session(ip_address{addr}, fd);
     }
 
     void listen_callbacks::error_cb(struct evconnlistener* /* evconn */, void* user_arg)
@@ -33,25 +32,24 @@ namespace wshttp
     void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)
     {
         assert(_ep.in_event_loop());
-        log->info("Inbound connection established (remote: {})", remote);
-        _ep.call_get([&]() {
-            auto [it, b] = _sessions.emplace(remote, nullptr);
+        log->info("Inbound connection established (fd: {}, remote: {})", fd, remote);
 
-            if (not b)
-            {
-                log->critical("Connection from {} already exists! Rejecting new inbound...", remote);
-                _sessions.erase(it);
-                return;
-            }
+        auto [it, b] = _sessions.emplace(remote, nullptr);
 
-            it->second = _ep.template make_shared<inbound_session>(*this, std::move(remote), fd);
+        if (not b)
+        {
+            log->critical("Connection from {} already exists! Rejecting new inbound...", remote);
+            _sessions.erase(it);
+            return;
+        }
 
-            if (not it->second)
-            {
-                log->critical("Failed to make inbound session for remote: {}", it->first);
-                _sessions.erase(it);
-            }
-        });
+        it->second = _ep.template make_shared<inbound_session>(*this, std::move(remote), fd);
+
+        if (not it->second)
+        {
+            log->critical("Failed to make inbound session for remote: {}", it->first);
+            _sessions.erase(it);
+        }
     }
 
     void listener::close_all()
@@ -131,16 +129,14 @@ namespace wshttp
     SSL* listener::new_ssl()
     {
         assert(_ep.in_event_loop());
-        return _ep.call_get([&]() {
-            SSL* _ssl = SSL_new(_ep.inbound_ctx());
+        SSL* _ssl = SSL_new(_ep.inbound_ctx());
 
-            if (!_ssl)
-                throw std::runtime_error{"Failed to create SSL/TLS: {}"_format(detail::current_error())};
+        if (!_ssl)
+            throw std::runtime_error{"Failed to create SSL/TLS: {}"_format(detail::current_error())};
 
-            log->trace("Created SSL/TLS...");
+        log->trace("Created SSL/TLS...");
 
-            return _ssl;
-        });
+        return _ssl;
     }
 
 }  //  namespace wshttp

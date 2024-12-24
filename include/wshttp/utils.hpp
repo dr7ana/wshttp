@@ -17,6 +17,7 @@ extern "C"
 #include <netinet/tcp.h>
 #include <nghttp2/nghttp2.h>
 #include <openssl/conf.h>
+#include <openssl/decoder.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/types.h>

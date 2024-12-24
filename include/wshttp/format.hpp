@@ -13,6 +13,9 @@ using namespace std::literals;
 
 namespace wshttp
 {
+    inline const auto PATTERN_COLOR = "[%H:%M:%S.%e] [%*] [\x1b[1m%n\x1b[0m:%^%l%$] >> %v"s;
+    inline const auto PATTERN_COLOR2 = "[%H:%M:%S.%e] [%*] [\x1b[1m%n\x1b[0m:%^%l%$|\x1b[3m%g:%#\x1b[0m] >> %v"s;
+
     // Types can opt-in to being fmt-formattable by ensuring they have a ::to_string() method
     // defined
     template <typename T>
@@ -21,36 +24,6 @@ namespace wshttp
             a.to_string()
         } -> std::convertible_to<std::string_view>;
     };
-}  // namespace wshttp
-
-namespace fmt
-{
-    template <wshttp::to_string_formattable T>
-    struct formatter<T, char> : formatter<std::string_view>
-    {
-        template <typename FormatContext>
-        auto format(const T& val, FormatContext& ctx) const
-        {
-            return formatter<std::string_view>::format(val.to_string(), ctx);
-        }
-    };
-
-    template <wshttp::const_span_type T>
-    struct formatter<T, char> : formatter<std::string_view>
-    {
-        template <typename FormatContext>
-        auto format(const T& val, FormatContext& ctx) const
-        {
-            return formatter<std::string_view>::format(
-                    std::string_view{reinterpret_cast<const char*>(val.data()), val.size()}, ctx);
-        }
-    };
-}  // namespace fmt
-
-namespace wshttp
-{
-    inline const auto PATTERN_COLOR = "[%H:%M:%S.%e] [%*] [\x1b[1m%n\x1b[0m:%^%l%$] >> %v"s;
-    inline const auto PATTERN_COLOR2 = "[%H:%M:%S.%e] [%*] [\x1b[1m%n\x1b[0m:%^%l%$|\x1b[3m%g:%#\x1b[0m] >> %v"s;
 
     namespace detail
     {
@@ -224,3 +197,27 @@ namespace wshttp
     };
 
 }  //  namespace wshttp
+
+namespace fmt
+{
+    template <wshttp::to_string_formattable T>
+    struct formatter<T, char> : formatter<std::string_view>
+    {
+        template <typename FormatContext>
+        auto format(const T& val, FormatContext& ctx) const
+        {
+            return formatter<std::string_view>::format(val.to_string(), ctx);
+        }
+    };
+
+    template <wshttp::const_span_type T>
+    struct formatter<T, char> : formatter<std::string_view>
+    {
+        template <typename FormatContext>
+        auto format(const T& val, FormatContext& ctx) const
+        {
+            return formatter<std::string_view>::format(
+                    std::string_view{reinterpret_cast<const char*>(val.data()), val.size()}, ctx);
+        }
+    };
+}  // namespace fmt

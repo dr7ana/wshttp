@@ -28,10 +28,7 @@ namespace wshttp
         ip_address _local{};
         int _fd{-1};
 
-        // evhttp_ptr _evhttp;
-
         tcp_listener _tcp;
-        // evhttp_bind _sock;
 
         // key: remote address, value: session ptr
         std::unordered_map<ip_address, std::shared_ptr<inbound_session>> _sessions;

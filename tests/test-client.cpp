@@ -2,14 +2,10 @@
 
 int main(int argc, char* argv[])
 {
-    SSL_library_init();
-    SSL_load_error_strings();
-    ERR_load_crypto_strings();
-
     std::signal(SIGPIPE, SIG_IGN);
     // std::signal(SIGINT, wshttp::signal_handler);
 
-    CLI::App cli{"WSHTTP test client"};
+    CLI::App cli{"WSHTTP test endpoint"};
 
     std::string log_level{"debug"};
     cli.add_option(
@@ -50,7 +46,7 @@ int main(int argc, char* argv[])
     }
     catch (const std::exception& e)
     {
-        wshttp::log->critical("Failed to start client: {}", e.what());
+        wshttp::log->critical("Failed to start endpoint: {}", e.what());
         return 1;
     }
 

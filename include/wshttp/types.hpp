@@ -43,7 +43,7 @@ namespace wshttp
 
     namespace detail
     {
-        template <wshttp::enc::basic_char T, size_t N>
+        template <enc::basic_char T, size_t N>
         struct span_literal
         {
             consteval span_literal(const char (&s)[N])
@@ -52,10 +52,10 @@ namespace wshttp
                     arr[i] = enc::bit_cast<T>(s[i]);
             }
 
-            std::array<T, N> arr;
-            using size = std::integral_constant<size_t, N>;
+            static constexpr size_t SIZE{N - 1};
+            T arr[N];
 
-            consteval const_span<const T, N> span() const { return {arr}; }
+            constexpr auto span() const { return const_span<T, SIZE>{arr, SIZE}; }
         };
 
         template <size_t N>
@@ -81,19 +81,19 @@ namespace wshttp
     inline namespace literals
     {
         template <detail::sp_literal CStr>
-        constexpr const_span<char, decltype(CStr)::size::value> operator""_sp()
+        constexpr auto operator""_sp()
         {
             return CStr.span();
         }
 
         template <detail::usp_literal UStr>
-        constexpr const_span<unsigned char, decltype(UStr)::size::value> operator""_usp()
+        constexpr auto operator""_usp()
         {
             return UStr.span();
         }
 
         template <detail::bsp_literal BStr>
-        constexpr const_span<std::byte, decltype(BStr)::size::value> operator""_bsp()
+        constexpr auto operator""_bsp()
         {
             return BStr.span();
         }

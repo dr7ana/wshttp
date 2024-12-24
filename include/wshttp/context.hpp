@@ -63,10 +63,7 @@ namespace wshttp
         void _set_sslopts(bool outbound);
 
         void _init_inbound();
-        void _init_inbound(const char* _keyfile, const char* _certfile);
-
         void _init_outbound();
-        void _init_outbound(const char* _keyfile, const char* _certfile);
     };
 }  //  namespace wshttp
 
