@@ -43,6 +43,35 @@ namespace wshttp
 
     namespace detail
     {
+        using void_ptr_t = void*;
+
+        template <typename T>
+        concept pointer_t = std::is_pointer_v<T>;
+
+        template <typename, typename>
+        struct deleter2;
+
+        // template <typename T, typename Callable
+
+        // template: class, function, function arg/method return type/none
+        template <typename>
+        struct deleter;
+
+        // creates a deleter that invokes a hook taking a class object ptr as an argument
+        template <typename T>
+        struct deleter
+        {
+            consteval deleter(void (*func)(T*)) : hook{func} {}
+
+            void (*hook)(T*);
+
+            inline void operator()(T* t) const
+            {
+                if (hook and t)
+                    hook(t);
+            }
+        };
+
         template <enc::basic_char T, size_t N>
         struct span_literal
         {
@@ -98,72 +127,6 @@ namespace wshttp
             return BStr.span();
         }
     }  // namespace literals
-
-    namespace deleters
-    {
-        struct _event
-        {
-            inline void operator()(::event* e) const { ::event_free(e); }
-        };
-
-        struct _session
-        {
-            inline void operator()(nghttp2_session* s) const { nghttp2_session_del(s); }
-        };
-
-        struct _evdns
-        {
-            inline void operator()(::evdns_base* e) const { ::evdns_base_free(e, 1); }
-        };
-
-        struct _evdns_port
-        {
-            inline void operator()(::evdns_server_port* e) const { ::evdns_close_server_port(e); }
-        };
-
-        struct _bufferevent
-        {
-            inline void operator()(::bufferevent* b) const { bufferevent_free(b); }
-        };
-
-        struct _evconnlistener
-        {
-            inline void operator()(::evconnlistener* e) const { ::evconnlistener_free(e); }
-        };
-
-        struct _evhttp
-        {
-            inline void operator()(::evhttp* e) { ::evhttp_free(e); }
-        };
-
-        struct _ssl_ctx
-        {
-            inline void operator()(SSL_CTX* s) const { SSL_CTX_free(s); }
-        };
-
-        struct _ssl
-        {
-            inline void operator()(SSL* s) const { SSL_shutdown(s); }
-        };
-
-    }  //  namespace deleters
-
-    using evhttp_ptr = std::unique_ptr<::evhttp, deleters::_evhttp>;
-
-    using tcp_listener = std::shared_ptr<evconnlistener>;
-
-    using session_ptr = std::shared_ptr<::nghttp2_session>;
-
-    // using evhttp_bind = std::unique_ptr<evhttp_bound_socket>;
-
-    using ssl_ptr = std::unique_ptr<::SSL, deleters::_ssl>;
-    using ssl_ctx_ptr = std::unique_ptr<::SSL_CTX, deleters::_ssl_ctx>;
-
-    using event_ptr = std::unique_ptr<::event, deleters::_event>;
-
-    using bufferevent_ptr = std::unique_ptr<::bufferevent, deleters::_bufferevent>;
-
-    enum class IO { INBOUND, OUTBOUND };
 
     namespace req
     {

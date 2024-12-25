@@ -12,8 +12,8 @@ int main(int argc, char* argv[])
             "-L,--log-level", log_level, "Log verbosity lesvel; one of trace, debug, info, warn, error, or critical");
 
     std::string key_path, cert_path;
-    cli.add_option("-K, --keyfile", key_path, "Path to private key file");
-    cli.add_option("-C, --certfile", cert_path, "Path to cert file");
+    cli.add_option("-K, --keyfile", key_path, "Path to private key file")->required();
+    cli.add_option("-C, --certfile", cert_path, "Path to cert file")->required();
 
     try
     {
@@ -26,11 +26,10 @@ int main(int argc, char* argv[])
 
     wshttp::log->set_level(log_level);
 
-    std::shared_ptr<wshttp::ssl_creds> creds = nullptr;
+    std::shared_ptr<wshttp::ssl_creds> creds;
 
     auto loop = wshttp::event_loop::make();
-    if (not key_path.empty() and not cert_path.empty())
-        creds = wshttp::ssl_creds::make(key_path, cert_path);
+    creds = wshttp::ssl_creds::make(key_path, cert_path);
 
     std::shared_ptr<wshttp::endpoint> ep;
 

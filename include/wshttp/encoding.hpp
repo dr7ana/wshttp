@@ -9,8 +9,7 @@
 
 #elif !(defined(__clang__) || defined(__GNUC__))
 #if defined(__linux__)
-extern "C"
-{
+extern "C" {
 #include <byteswap.h>
 }  // extern "C"
 

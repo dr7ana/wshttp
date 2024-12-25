@@ -4,6 +4,19 @@
 
 namespace wshttp
 {
+    namespace detail
+    {
+        void parse_addr(int af, void* dest, const std::string& from)
+        {
+            auto rv = inet_pton(af, from.c_str(), dest);
+
+            if (rv == 0)  // inet_pton returns this on invalid input
+                throw std::invalid_argument{"Unable to parse IP address!"};
+            if (rv < 0)
+                throw std::system_error{errno, std::system_category()};
+        }
+    }  // namespace detail
+
     uri::uri(
             const std::string_view& _s,
             const std::string_view& _u,

@@ -1,26 +1,14 @@
 #pragma once
 
-extern "C"
-{
+extern "C" {
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent_struct.h>
-#include <event2/dns.h>
-#include <event2/dns_struct.h>
-#include <event2/event.h>
-#include <event2/http.h>
-#include <event2/listener.h>
-#include <event2/thread.h>
 
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <nghttp2/nghttp2.h>
-#include <openssl/conf.h>
-#include <openssl/decoder.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-#include <openssl/types.h>
 }
 
 #include <array>
@@ -49,8 +37,6 @@ namespace wshttp
     namespace detail
     {
         std::chrono::steady_clock::time_point get_time();
-
-        std::string_view translate_req_type(int t);
 
         std::string localhost_ip(uint16_t port);
 

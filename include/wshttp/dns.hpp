@@ -2,6 +2,11 @@
 
 #include "loop.hpp"
 
+extern "C" {
+#include <event2/dns.h>
+#include <event2/dns_struct.h>
+}
+
 namespace wshttp
 {
     class endpoint;
@@ -14,7 +19,7 @@ namespace wshttp
 
           public:
             server() = delete;
-            explicit server(wshttp::endpoint& e);
+            server(wshttp::endpoint& e);
 
             [[nodiscard]] static std::unique_ptr<server> make(wshttp::endpoint& e);
 

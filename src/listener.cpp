@@ -82,11 +82,6 @@ namespace wshttp
     {
         assert(_ep.in_event_loop());
 
-        // _evhttp.reset(evhttp_new(_ep._loop->loop().get()));
-
-        // if (not _evhttp)
-        //     throw std::runtime_error{"Failed to make evhttp base for new server!"};
-
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = INADDR_ANY;

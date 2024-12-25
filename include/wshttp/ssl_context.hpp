@@ -2,9 +2,35 @@
 
 #include "types.hpp"
 
+#define OPENSSL_API_COMPAT 30000
+
+extern "C" {
+#include <openssl/conf.h>
+#include <openssl/decoder.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <openssl/types.h>
+}
+
 namespace wshttp
 {
     class endpoint;
+
+    namespace deleters
+    {
+        struct _ssl_ctx
+        {
+            inline void operator()(SSL_CTX* s) const { SSL_CTX_free(s); }
+        };
+
+        struct _ssl
+        {
+            inline void operator()(SSL* s) const { SSL_shutdown(s); }
+        };
+    }  // namespace deleters
+
+    using ssl_ptr = std::unique_ptr<::SSL, deleters::_ssl>;
+    using ssl_ctx_ptr = std::unique_ptr<::SSL_CTX, deleters::_ssl_ctx>;
 
     namespace auth
     {

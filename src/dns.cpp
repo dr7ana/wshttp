@@ -6,6 +6,74 @@
 
 namespace wshttp
 {
+    namespace deleters
+    {
+        struct _evdns
+        {
+            inline void operator()(::evdns_base* e) const { ::evdns_base_free(e, 1); }
+        };
+
+        struct _evdns_port
+        {
+            inline void operator()(::evdns_server_port* e) const { ::evdns_close_server_port(e); }
+        };
+    }  // namespace deleters
+
+    namespace detail
+    {
+        constexpr std::string_view translate_dns_req_class(int t)
+        {
+            switch (t)
+            {
+                case EVDNS_CLASS_INET:
+                    return "CLASS-INET"sv;
+                default:
+                    return "CLASS-UNKNOWN"sv;
+            }
+        }
+
+        constexpr std::string_view translate_req_type(int t)
+        {
+            switch (t)
+            {
+                case EVDNS_TYPE_A:
+                    return "IPV4(A)-REQUEST"sv;
+                case EVDNS_TYPE_CNAME:
+                    return "CNAME-REQUEST"sv;
+                case EVDNS_TYPE_PTR:
+                    return "PTR-REQUEST"sv;
+                case EVDNS_TYPE_AAAA:
+                    return "IPV6(AAAA)-REQUEST"sv;
+                case EVDNS_TYPE_SOA:
+                    return "SOA-REQUEST"sv;
+                default:
+                    return "UNKNOWN-REQUEST"sv;
+            }
+        }
+
+        void print_dns_req(struct evdns_server_request* req)
+        {
+            auto msg = "\n----- INCOMING REQUEST -----\nFlags: {}\nNum questions: {}\n"_format(
+                    req->flags, req->nquestions ? req->nquestions : 0);
+
+            if (req->nquestions)
+            {
+                for (int i = 0; i < req->nquestions; ++i)
+                {
+                    auto* q = req->questions[i];
+                    msg += "Question #{}:\nName: {} -- Type: {} -- Class: {}"_format(
+                            i + 1,
+                            q->name,
+                            translate_req_type(q->type),
+                            translate_dns_req_class(q->dns_question_class));
+                }
+            }
+
+            log->critical("{}", msg);
+        }
+
+    }  // namespace detail
+
     static dns::server& _get_dns(void* user_arg)
     {
         return *static_cast<dns::server*>(user_arg);
@@ -109,7 +177,7 @@ namespace wshttp
 
         void server::register_nameserver(uint16_t port)
         {
-            auto ns_ip = detail::localhost_ip(port);
+            auto ns_ip = "{}{}"_format(localhost, port);
             evdns_base_nameserver_ip_add(_evdns.get(), ns_ip.c_str());
             log->info("Server successfully registered local nameserver ip: {}", ns_ip);
         }

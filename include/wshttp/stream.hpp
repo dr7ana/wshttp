@@ -2,13 +2,12 @@
 
 #include "address.hpp"
 #include "request.hpp"
+#include "session.hpp"
 #include "types.hpp"
 
 namespace wshttp
 {
-    class session_base;
-    class inbound_session;
-    class outbound_session;
+    enum class IO { INBOUND, OUTBOUND };
 
     class stream
     {
@@ -57,12 +56,17 @@ namespace wshttp
       public:
         int fd() const { return _fd; }
     };
+
     namespace deleters
     {
-        inline constexpr auto stream_d = [](stream* s) {
-            if (s->fd() == -1)
-                close(s->fd());
+        struct _stream
+        {
+            inline void operator()(stream* s) const
+            {
+                if (s and s->fd() != -1)
+                    ::close(s->fd());
+            }
         };
-    }
+    }  // namespace deleters
 
 }  //  namespace wshttp

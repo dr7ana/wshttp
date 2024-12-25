@@ -1,11 +1,27 @@
-#include "context.hpp"
+#include "ssl_context.hpp"
 
 #include "internal.hpp"
 
 namespace wshttp
 {
+    namespace detail
+    {
+        const char* current_error()
+        {
+            return ERR_error_string(ERR_get_error(), NULL);
+        }
+
+        void setup_ssl_library()
+        {
+            OPENSSL_init_ssl(0, NULL);
+            SSL_load_error_strings();
+            OpenSSL_add_all_algorithms();
+            OpenSSL_add_all_ciphers();
+        }
+    }  // namespace detail
+
     static constexpr auto default_sslopts = (SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) | SSL_OP_NO_SSLv2 |
-                                            SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION |
+                                            SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1_1 | SSL_OP_NO_COMPRESSION |
                                             SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
 
     static constexpr auto MIN_TLS_VERSION = /* TLS1_2_VERSION */ 0x0303;
@@ -13,7 +29,9 @@ namespace wshttp
 
     // "Intermediate capability" cipherlist for TLS 1.2-1.3
     // https://wiki.mozilla.org/Security/Server_Side_TLS
-    static constexpr auto TLS_CIPHERS =
+    static constexpr auto TLS1_3_CIPHERS =
+            "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"sv;
+    static constexpr auto TLS1_2_CIPHERS =
             "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-"
             "GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-"
             "AES256-GCM-SHA384"sv;
@@ -102,7 +120,8 @@ namespace wshttp
                         SSL_CTX_set_max_proto_version(ctx, MAX_TLS_VERSION),
                 "Set TLS min/max proto");
 
-        check_rv(SSL_CTX_set_cipher_list(ctx, TLS_CIPHERS.data()), "Set TLS ciphers");
+        check_rv(SSL_CTX_set_cipher_list(ctx, TLS1_2_CIPHERS.data()), "Set TLSv1.2 ciphers");
+        check_rv(SSL_CTX_set_ciphersuites(ctx, TLS1_3_CIPHERS.data()), "Set TLSv1.3 ciphers");
 
         auto session_id = next_sid();
         SSL_CTX_set_session_id_context(ctx, session_id.data(), session_id.size());
@@ -136,10 +155,13 @@ namespace wshttp
         {
             log->debug("Configuring inbound context using system certs...");
 
-            X509_STORE* storage = SSL_CTX_get_cert_store(ctx);
-            check_rv(X509_STORE_set_default_paths(storage), "Set x509 store default paths");
+            check_rv(
+                    X509_STORE_set_default_paths(SSL_CTX_get_cert_store(ctx)),
+                    "SSL CTX set x509 storage default paths");
+            check_rv(SSL_CTX_set_default_verify_paths(ctx), "SSL CTX set default verify paths");
         }
 
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);
         SSL_CTX_set_alpn_select_cb(ctx, ctx_callbacks::server_select_alpn_proto_cb, this);
     }
 
@@ -164,6 +186,7 @@ namespace wshttp
             check_rv(
                     SSL_CTX_use_certificate_file(ctx, _creds->_certfile.c_str(), SSL_FILETYPE_PEM),
                     "SSL CTX read cert file");
+            check_rv(SSL_CTX_load_verify_file(ctx, _creds->_certfile.c_str()), "SSL CTX load verify file");
         }
         else
         {

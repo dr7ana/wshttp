@@ -4,13 +4,7 @@
 
 namespace wshttp
 {
-    static constexpr auto err_setup = []() {
-        SSL_library_init();
-        SSL_load_error_strings();
-        ERR_load_crypto_strings();
-    };
-
-    static void setup_libevent_logging()
+    static auto setup_libevent_logging()
     {
         event_set_log_callback([](int severity, const char* msg) {
             switch (severity)
@@ -212,8 +206,8 @@ namespace wshttp
         if (static bool once = false; !once)
         {
             once = true;
-            err_setup();
             setup_libevent_logging();
+            detail::setup_ssl_library();
 
             // Older versions of libevent do not like having this called multiple times
 #ifdef _WIN32

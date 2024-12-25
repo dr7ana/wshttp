@@ -1,10 +1,7 @@
 #pragma once
 
-#include "address.hpp"
-#include "context.hpp"
 #include "listener.hpp"
 #include "node.hpp"
-#include "request.hpp"
 
 namespace wshttp
 {
@@ -12,9 +9,26 @@ namespace wshttp
     class stream;
     class endpoint;
 
+    namespace deleters
+    {
+        struct _bufferevent
+        {
+            inline void operator()(::bufferevent* b) const { bufferevent_free(b); }
+        };
+
+        struct _session
+        {
+            inline void operator()(nghttp2_session* s) const { nghttp2_session_del(s); }
+        };
+    }  // namespace deleters
+
+    using bufferevent_ptr = std::unique_ptr<::bufferevent, deleters::_bufferevent>;
+
+    using session_ptr = std::shared_ptr<::nghttp2_session>;
+
     class session_base
     {
-        friend class stream;
+        // friend class stream;
         friend class listener;
         friend struct session_callbacks;
 
@@ -88,7 +102,7 @@ namespace wshttp
 
     class inbound_session final : public session_base
     {
-        friend class stream;
+        // friend class stream;
         friend class listener;
         friend struct session_callbacks;
 
@@ -135,7 +149,7 @@ namespace wshttp
 
     class outbound_session final : public session_base
     {
-        friend class stream;
+        // friend class stream;
         friend class node;
         friend struct session_callbacks;
 

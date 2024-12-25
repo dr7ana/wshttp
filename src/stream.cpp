@@ -2,7 +2,6 @@
 
 #include "endpoint.hpp"
 #include "internal.hpp"
-#include "session.hpp"
 
 namespace wshttp
 {

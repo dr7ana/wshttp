@@ -6,7 +6,7 @@ add_library(
 
     address.cpp
     callbacks.cpp
-    context.cpp
+    ssl_context.cpp
     dns.cpp
     format.cpp
     listener.cpp

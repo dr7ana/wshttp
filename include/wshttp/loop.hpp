@@ -2,6 +2,11 @@
 
 #include "types.hpp"
 
+extern "C" {
+#include <event2/event.h>
+#include <event2/thread.h>
+}
+
 #include <atomic>
 #include <cstdint>
 #include <future>
@@ -16,6 +21,16 @@ namespace wshttp
     using caller_id_t = uint16_t;
 
     class event_loop;
+
+    namespace deleters
+    {
+        struct _event
+        {
+            inline void operator()(::event* e) const { ::event_free(e); }
+        };
+    }  // namespace deleters
+
+    using event_ptr = std::unique_ptr<::event, deleters::_event>;
 
     struct ev_watcher
     {

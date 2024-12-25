@@ -2,7 +2,6 @@
 
 #include "endpoint.hpp"
 #include "internal.hpp"
-#include "request.hpp"
 #include "stream.hpp"
 
 namespace wshttp
@@ -57,7 +56,8 @@ namespace wshttp
         else if (events & BEV_EVENT_EOF)
             msg += " EOF!";
         else if (events & BEV_EVENT_ERROR)
-            msg += " network error!";
+            msg += " network error (msg: {})!"_format(
+                    ERR_error_string(bufferevent_get_openssl_error(s._bev.get()), NULL));
         else if (events & BEV_EVENT_TIMEOUT)
             msg += " timed out!";
 
@@ -205,16 +205,14 @@ namespace wshttp
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        return _ep.call_get([&]() -> nghttp2_ssize {
-            if (auto outlen = evbuffer_get_length(bufferevent_get_output(_bev.get())); outlen >= OUTPUT_BLOCK_THRESHOLD)
-            {
-                log->warn("Cannot send data (size:{}) with output buffer of size:{}", data.size(), outlen);
-                return NGHTTP2_ERR_WOULDBLOCK;
-            }
+        if (auto outlen = evbuffer_get_length(bufferevent_get_output(_bev.get())); outlen >= OUTPUT_BLOCK_THRESHOLD)
+        {
+            log->warn("Cannot send data (size:{}) with output buffer of size:{}", data.size(), outlen);
+            return NGHTTP2_ERR_WOULDBLOCK;
+        }
 
-            bufferevent_write(_bev.get(), data.data(), data.size());
-            return data.size();
-        });
+        bufferevent_write(_bev.get(), data.data(), data.size());
+        return data.size();
     }
 
     void session_base::config_send_initial()
@@ -222,10 +220,8 @@ namespace wshttp
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        return _ep.call_get([this]() {
-            initialize_session();
-            send_initial();
-        });
+        initialize_session();
+        send_initial();
     }
 
     std::shared_ptr<inbound_session> inbound_session::make(listener& l, ip_address remote, evutil_socket_t fd)
@@ -246,91 +242,79 @@ namespace wshttp
     void inbound_session::_init_internals()
     {
         assert(_ep.in_event_loop());
-        _ep.call_get([&]() {
-            _ssl.reset(_lst.new_ssl());
+        _ssl.reset(_lst.new_ssl());
 
-            if (not _ssl)
-                throw std::runtime_error{"Failed to emplace SSL pointer for new inbound session"};
+        if (not _ssl)
+            throw std::runtime_error{"Failed to emplace SSL pointer for new inbound session"};
 
-            int val = 1;
-            if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
-                throw std::runtime_error{
-                        "Failed to set TCP_NODELAY on inbound session TLS socket: {}"_format(detail::current_error())};
+        int val = 1;
+        if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
+            throw std::runtime_error{
+                    "Failed to set TCP_NODELAY on inbound session TLS socket: {}"_format(detail::current_error())};
 
-            _bev.reset(bufferevent_openssl_socket_new(
-                    _ep._loop->loop().get(),
-                    _fd,
-                    _ssl.get(),
-                    BUFFEREVENT_SSL_ACCEPTING,
-                    BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
+        _bev.reset(bufferevent_openssl_socket_new(
+                _ep._loop->loop().get(),
+                _fd,
+                _ssl.get(),
+                BUFFEREVENT_SSL_ACCEPTING,
+                BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
 
-            if (not _bev)
-                throw std::runtime_error{"Failed to create bufferevent socket for inbound TLS session: {}"_format(
-                        detail::current_error())};
+        if (not _bev)
+            throw std::runtime_error{
+                    "Failed to create bufferevent socket for inbound TLS session: {}"_format(detail::current_error())};
 
-            bufferevent_setcb(
-                    _bev.get(),
-                    session_callbacks::read_cb,
-                    session_callbacks::write_cb,
-                    session_callbacks::event_cb,
-                    this);
+        bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 
-            bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
+        bufferevent_setcb(
+                _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
 
-            bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
+        bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
-            log->debug("Inbound session has fd: {}", _fd);
+        log->debug("Inbound session has fd: {}", _fd);
 
-            sockaddr _laddr{};
-            socklen_t len;
+        sockaddr _laddr{};
+        socklen_t len;
 
-            if (getsockname(_fd, &_laddr, &len) < 0)
-                throw std::runtime_error{"Failed to get local socket address for incoming (remote: {}): {}, {}"_format(
-                        _path.remote(), detail::current_error(), errno)};
+        if (getsockname(_fd, &_laddr, &len) < 0)
+            throw std::runtime_error{"Failed to get local socket address for incoming (remote: {}): {}, {}"_format(
+                    _path.remote(), detail::current_error(), errno)};
 
-            _path._local = ip_address{&_laddr};
+        _path._local = ip_address{&_laddr};
 
-            log->info("Successfully configured inbound session; path: {}", _path);
-        });
+        log->info("Successfully configured inbound session; path: {}", _path);
     }
 
     void outbound_session::_init_internals()
     {
         assert(_ep.in_event_loop());
-        _ep.call_get([&]() {
-            _ssl.reset(_n.new_ssl());
+        _ssl.reset(_n.new_ssl());
 
-            if (not _ssl)
-                throw std::runtime_error{"Failed to emplace SSL pointer for new outbound session"};
+        if (not _ssl)
+            throw std::runtime_error{"Failed to emplace SSL pointer for new outbound session"};
 
-            _bev.reset(bufferevent_openssl_socket_new(
-                    _ep._loop->loop().get(),
-                    _fd,
-                    _ssl.get(),
-                    BUFFEREVENT_SSL_CONNECTING,
-                    BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
+        _bev.reset(bufferevent_openssl_socket_new(
+                _ep._loop->loop().get(),
+                _fd,
+                _ssl.get(),
+                BUFFEREVENT_SSL_CONNECTING,
+                BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE));
 
-            if (not _bev)
-                throw std::runtime_error{"Failed to create bufferevent socket for outbound TLS session: {}"_format(
-                        detail::current_error())};
+        if (not _bev)
+            throw std::runtime_error{
+                    "Failed to create bufferevent socket for outbound TLS session: {}"_format(detail::current_error())};
 
-            bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
+        bufferevent_ssl_set_flags(_bev.get(), BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 
-            bufferevent_setcb(
-                    _bev.get(),
-                    session_callbacks::read_cb,
-                    session_callbacks::write_cb,
-                    session_callbacks::event_cb,
-                    this);
+        bufferevent_setcb(
+                _bev.get(), session_callbacks::read_cb, session_callbacks::write_cb, session_callbacks::event_cb, this);
 
-            bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
+        bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
-            if (bufferevent_socket_connect_hostname(
-                        _bev.get(), *_ep._dns, AF_INET, get_uri().host().data(), HTTPS_PORT) != 0)
-                throw std::runtime_error{"Could not connect to remote host: {}"_format(detail::current_error())};
+        if (bufferevent_socket_connect_hostname(_bev.get(), *_ep._dns, AF_INET, get_uri().host().data(), HTTPS_PORT) !=
+            0)
+            throw std::runtime_error{"Could not connect to remote host: {}"_format(detail::current_error())};
 
-            log->info("Successfully configured outbound session; path: {}", _path);
-        });
+        log->info("Successfully configured outbound session; path: {}", _path);
     }
 
     void inbound_session::close_session()
@@ -375,18 +359,20 @@ namespace wshttp
 
         nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, session_callbacks::on_stream_close_callback);
 
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, session_callbacks::on_frame_recv_callback);
+
+        // nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, nullptr);
+
+        // nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, nullptr);
+
         nghttp2_session_callbacks_set_send_callback2(callbacks, session_callbacks::send_callback);
 
-        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, session_callbacks::on_frame_recv_callback);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
 
         nghttp2_session_callbacks_set_on_begin_headers_callback(
                 callbacks, session_callbacks::on_begin_headers_callback);
 
-        nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
-
-        // nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, nullptr);
         // nghttp2_session_callbacks_set_before_frame_send_callback(callbacks, nullptr);
-        // nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, nullptr);
         // nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, nullptr);
 
         if (auto rv = nghttp2_option_new(&opt); rv != 0)
@@ -487,15 +473,13 @@ namespace wshttp
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        return _ep.call_get([&]() {
-            if (_streams.erase(stream_id))
-            {
-                log->info("Closed inbound stream (ID:{}, ec:{})", stream_id, error_code);
-            }
-            else
-                log->warn("Could not find inbound stream (ID:{}); received error code: {}", stream_id, error_code);
-            return 0;
-        });
+        if (_streams.erase(stream_id))
+        {
+            log->info("Closed inbound stream (ID:{}, ec:{})", stream_id, error_code);
+        }
+        else
+            log->warn("Could not find inbound stream (ID:{}); received error code: {}", stream_id, error_code);
+        return 0;
     }
 
     int outbound_session::stream_close_hook(int32_t stream_id, uint32_t error_code)
@@ -503,21 +487,19 @@ namespace wshttp
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        return _ep.call_get([&]() -> int {
-            if (_streams.erase(stream_id))
+        if (_streams.erase(stream_id))
+        {
+            log->info("Closed outbound stream (ID:{}, ec:{}); terminating session...", stream_id, error_code);
+            if (auto rv = nghttp2_session_terminate_session(_session.get(), NGHTTP2_NO_ERROR); rv != 0)
             {
-                log->info("Closed outbound stream (ID:{}, ec:{}); terminating session...", stream_id, error_code);
-                if (auto rv = nghttp2_session_terminate_session(_session.get(), NGHTTP2_NO_ERROR); rv != 0)
-                {
-                    log->warn("Call to `nghttp2_session_terminate_session` failed; reason: {}", nghttp2_strerror(rv));
-                    return NGHTTP2_ERR_CALLBACK_FAILURE;
-                }
-                close_session();
+                log->warn("Call to `nghttp2_session_terminate_session` failed; reason: {}", nghttp2_strerror(rv));
+                return NGHTTP2_ERR_CALLBACK_FAILURE;
             }
-            else
-                log->warn("Could not find outbound stream (ID:{}); received error code: {}", stream_id, error_code);
-            return 0;
-        });
+            close_session();
+        }
+        else
+            log->warn("Could not find outbound stream (ID:{}); received error code: {}", stream_id, error_code);
+        return 0;
     }
 
     int inbound_session::begin_headers_hook(const nghttp2_frame* frame)
@@ -579,15 +561,13 @@ namespace wshttp
         }
         else if (req::fields::path == name)
         {
-            return _ep.call_get([&]() -> int {
-                auto& stream_id = frame->hd.stream_id;
+            auto& stream_id = frame->hd.stream_id;
 
-                if (auto it = _streams.find(stream_id); it != _streams.end())
-                    return it->second->recv_path_header(value);
+            if (auto it = _streams.find(stream_id); it != _streams.end())
+                return it->second->recv_path_header(value);
 
-                log->critical("Could not find inbound stream of id:{} to recv header!", stream_id);
-                return NGHTTP2_ERR_CALLBACK_FAILURE;
-            });
+            log->critical("Could not find inbound stream of id:{} to recv header!", stream_id);
+            return NGHTTP2_ERR_CALLBACK_FAILURE;
         }
         else
             log->debug("Received unhandled header type on inbound session (remote: {})", _path.remote());
@@ -606,15 +586,13 @@ namespace wshttp
             return 0;
         }
 
-        return _ep.call_get([&]() -> int {
-            auto& stream_id = frame->hd.stream_id;
+        auto& stream_id = frame->hd.stream_id;
 
-            if (auto it = _streams.find(stream_id); it != _streams.end())
-                return it->second->recv_header(req::headers{name, value});
+        if (auto it = _streams.find(stream_id); it != _streams.end())
+            return it->second->recv_header(req::headers{name, value});
 
-            log->critical("Could not find outbound stream of id:{} to recv header!", stream_id);
-            return NGHTTP2_ERR_CALLBACK_FAILURE;
-        });
+        log->warn("Could not find outbound stream of id:{} to recv header!", stream_id);
+        return NGHTTP2_ERR_CALLBACK_FAILURE;
     }
 
     int inbound_session::frame_recv_hook(const nghttp2_frame* frame)
@@ -622,31 +600,29 @@ namespace wshttp
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        return _ep.call_get([&]() -> int {
-            auto& stream_id = frame->hd.stream_id;
+        auto& stream_id = frame->hd.stream_id;
 
-            switch (frame->hd.type)
-            {
-                case NGHTTP2_DATA:
-                case NGHTTP2_HEADERS:
-                    if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM)
+        switch (frame->hd.type)
+        {
+            case NGHTTP2_DATA:
+            case NGHTTP2_HEADERS:
+                if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM)
+                {
+                    if (auto it = _streams.find(stream_id); it != _streams.end())
+                        return it->second->recv_frame();
+                    else
                     {
-                        if (auto it = _streams.find(stream_id); it != _streams.end())
-                            return it->second->recv_frame();
-                        else
-                        {
-                            log->critical("Could not find stream of id:{} to process incoming frame!", stream_id);
-                            return NGHTTP2_ERR_CALLBACK_FAILURE;
-                        }
+                        log->critical("Could not find stream of id:{} to process incoming frame!", stream_id);
+                        return NGHTTP2_ERR_CALLBACK_FAILURE;
                     }
-                    break;
-                default:
-                    break;
-            }
+                }
+                break;
+            default:
+                break;
+        }
 
-            log->debug("Received nghttp2_frame_type value: {}", static_cast<int>(frame->hd.type));
-            return 0;
-        });
+        log->debug("Received nghttp2_frame_type value: {}", static_cast<int>(frame->hd.type));
+        return 0;
     }
 
     int outbound_session::frame_recv_hook(const nghttp2_frame* frame)
@@ -663,6 +639,6 @@ namespace wshttp
     std::shared_ptr<stream> inbound_session::make_stream(int32_t stream_id)
     {
         assert(_ep.in_event_loop());
-        return _ep.template shared_ptr<stream>(new stream{*this, _session, stream_id}, deleters::stream_d);
+        return _ep.template shared_ptr<stream>(new stream{*this, _session, stream_id}, deleters::_stream{});
     }
 }  //  namespace wshttp

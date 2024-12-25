@@ -35,7 +35,7 @@ BraceWrapping:
   AfterClass: true
   AfterControlStatement: Always
   AfterEnum: false
-  AfterExternBlock: true
+  AfterExternBlock: false
   AfterFunction: true
   AfterNamespace: true
   AfterStruct: true

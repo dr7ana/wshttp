@@ -1,13 +1,27 @@
 #pragma once
 
 #include "address.hpp"
-#include "context.hpp"
+#include "ssl_context.hpp"
+
+extern "C" {
+#include <event2/listener.h>
+}
 
 namespace wshttp
 {
     class app_context;
     class endpoint;
     class inbound_session;
+
+    namespace deleters
+    {
+        struct _evconnlistener
+        {
+            inline void operator()(::evconnlistener* e) const { ::evconnlistener_free(e); }
+        };
+    }  // namespace deleters
+
+    using tcp_listener = std::shared_ptr<evconnlistener>;
 
     class listener
     {

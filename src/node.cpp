@@ -1,9 +1,9 @@
 #include "node.hpp"
 
-#include "context.hpp"
 #include "endpoint.hpp"
 #include "internal.hpp"
 #include "session.hpp"
+#include "ssl_context.hpp"
 
 namespace wshttp
 {
