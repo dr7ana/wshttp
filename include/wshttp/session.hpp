@@ -28,7 +28,7 @@ namespace wshttp
 
     class session_base
     {
-        // friend class stream;
+        friend class stream;
         friend class listener;
         friend struct session_callbacks;
 
@@ -57,7 +57,7 @@ namespace wshttp
 
         void send_session_data();
 
-        nghttp2_ssize send_hook(ustring data);
+        nghttp2_ssize send_hook(uspan data);
 
         void config_send_initial();
 
@@ -68,8 +68,6 @@ namespace wshttp
         virtual int begin_headers_hook(const nghttp2_frame* frame) = 0;
 
         virtual int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) = 0;
-
-        virtual int frame_recv_hook(const nghttp2_frame* frame) = 0;
 
         virtual int stream_close_hook(int32_t stream_id, uint32_t error_code = 0) = 0;
 
@@ -138,7 +136,9 @@ namespace wshttp
 
         int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) override;
 
-        int frame_recv_hook(const nghttp2_frame* frame) override;
+        int frame_recv_hook(const nghttp2_frame* frame);
+
+        // int frame_send_hook(const nghttp2_frame* frame);
 
         int stream_close_hook(int32_t stream_id, uint32_t error_code = 0) override;
 
@@ -177,8 +177,6 @@ namespace wshttp
         int begin_headers_hook(const nghttp2_frame* frame) override;
 
         int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) override;
-
-        int frame_recv_hook(const nghttp2_frame* frame) override;
 
         int stream_close_hook(int32_t stream_id, uint32_t error_code = 0) override;
 

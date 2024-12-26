@@ -47,14 +47,6 @@ namespace wshttp
         log->debug("Outbound stream (ID: {}) created!", _id);
     }
 
-    int stream::recv_data(ustring data)
-    {
-        log->trace("{} called", __PRETTY_FUNCTION__);
-
-        log->info("Stream (ID:{}) received data: {}", _id, buffer_printer{data});
-        return 0;
-    }
-
     int stream::recv_path_header(uspan path)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -139,16 +131,17 @@ namespace wshttp
     int stream::send_response(req::headers hdrs)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
+        return _s._ep.call_get([&]() -> int {
+            nghttp2_data_provider2 _prv{.source = {_fd}, .read_callback = stream_callbacks::file_read_callback};
 
-        nghttp2_data_provider2 _prv{.source = {_fd}, .read_callback = stream_callbacks::file_read_callback};
+            if (auto rv = nghttp2_submit_response2(_session.get(), _id, hdrs, hdrs.size(), &_prv); rv != 0)
+            {
+                log->critical("Fatal 'nghttp2_submit_response2' error: {}", nghttp2_strerror(rv));
+                return NGHTTP2_ERR_FATAL;
+            }
 
-        if (auto rv = nghttp2_submit_response2(_session.get(), _id, hdrs, hdrs.size(), &_prv); rv != 0)
-        {
-            log->critical("Fatal 'nghttp2_submit_response2' error: {}", nghttp2_strerror(rv));
-            return NGHTTP2_ERR_FATAL;
-        }
-
-        return 0;
+            return 0;
+        });
     }
 
 }  //  namespace wshttp

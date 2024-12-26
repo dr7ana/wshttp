@@ -79,15 +79,18 @@ namespace wshttp
 
         for (auto& a : H2_ALPN_ARR)
         {
-            for (auto curr = in; curr != in + inlen; curr += *curr + 1)
+            log->trace("Seeking ALPN: {}", a);
+            for (auto *curr = in, *end = in + inlen; curr + a.size() <= end; curr += *curr + 1)
             {
-                if (a == uspan{curr, curr + *curr})
+                if (uspan input{curr, curr + *curr + 1}; a == input)
                 {
                     *out = curr + 1;
                     *outlen = *curr;
-                    log->debug("Client list matched local alpn proto: {}", a);
+                    log->debug("Client alpn ({}) matched local alpn proto: {}", input, a);
                     return SSL_TLSEXT_ERR_OK;
                 }
+                else
+                    log->debug("Did not find match for client alpn: {}", input);
             }
         }
 

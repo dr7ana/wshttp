@@ -48,11 +48,6 @@ namespace wshttp
         template <typename T>
         concept pointer_t = std::is_pointer_v<T>;
 
-        template <typename, typename>
-        struct deleter2;
-
-        // template <typename T, typename Callable
-
         // template: class, function, function arg/method return type/none
         template <typename>
         struct deleter;

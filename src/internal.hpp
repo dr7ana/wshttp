@@ -76,7 +76,7 @@ namespace wshttp
 
     struct dns_callbacks
     {
-        static void server_cb(struct evdns_server_request* req, void* user_data);
+        static void server_cb(struct evdns_server_request* req, void* user_arg);
     };
 
     struct listen_callbacks
@@ -98,15 +98,15 @@ namespace wshttp
         static nghttp2_ssize send_callback(
                 nghttp2_session* session, const uint8_t* data, size_t length, int flags, void* user_arg);
 
-        static int on_frame_send_callback(nghttp2_session* session, const nghttp2_frame* frame, void* user_data);
+        // static int on_frame_send_callback(nghttp2_session* session, const nghttp2_frame* frame, void* user_arg);
 
-        static int on_data_chunk_recv_callback(
-                nghttp2_session* session,
-                uint8_t flags,
-                int32_t stream_id,
-                const uint8_t* data,
-                size_t len,
-                void* user_data);
+        // static int on_data_chunk_recv_callback(
+        //         nghttp2_session* session,
+        //         uint8_t flags,
+        //         int32_t stream_id,
+        //         const uint8_t* data,
+        //         size_t len,
+        //         void* user_arg);
 
         static int on_frame_recv_callback(nghttp2_session* session, const nghttp2_frame* frame, void* user_arg);
 
@@ -135,6 +135,6 @@ namespace wshttp
                 size_t length,
                 uint32_t* data_flags,
                 nghttp2_data_source* source,
-                void* user_data);
+                void* user_arg);
     };
 }  // namespace wshttp

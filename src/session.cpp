@@ -87,34 +87,35 @@ namespace wshttp
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
         auto& s = _get_session(user_arg);
-        return s.send_hook(ustring{data, datalen});
+        return s.send_hook(uspan{data, datalen});
     }
 
-    // int session_callbacks::on_frame_send_callback(nghttp2_session *session, const nghttp2_frame
-    // *frame, void *user_arg)
+    // int session_callbacks::on_data_chunk_recv_callback(
+    //         nghttp2_session* session,
+    //         uint8_t /* flags */,
+    //         int32_t stream_id,
+    //         const uint8_t* data,
+    //         size_t datalen,
+    //         void* /* user_arg */)
     // {
     //     log->debug("{} called", __PRETTY_FUNCTION__);
-    //     auto &s = _get_session(user_arg);
+    //     auto* s = _get_stream(session, stream_id);
+    //     return s->recv_data_chunk(uspan{data, datalen});
     // }
 
-    int session_callbacks::on_data_chunk_recv_callback(
-            nghttp2_session* session,
-            uint8_t /* flags */,
-            int32_t stream_id,
-            const uint8_t* data,
-            size_t datalen,
-            void* /* user_arg */)
-    {
-        log->debug("{} called", __PRETTY_FUNCTION__);
-        auto s = _get_stream(session, stream_id);
-        return s->recv_data(ustring{data, datalen});
-    }
+    // int session_callbacks::on_frame_send_callback(
+    //         nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
+    // {
+    //     log->trace("{} called", __PRETTY_FUNCTION__);
+    //     auto& s = _get_session<inbound_session>(user_arg);
+    //     return s.frame_send_hook(frame);
+    // }
 
     int session_callbacks::on_frame_recv_callback(
             nghttp2_session* /* session */, const nghttp2_frame* frame, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
-        auto& s = _get_session(user_arg);
+        auto& s = _get_session<inbound_session>(user_arg);
         return s.frame_recv_hook(frame);
     }
 
@@ -150,6 +151,7 @@ namespace wshttp
         return s.begin_headers_hook(frame);
     }
 
+    // called directly from the event loop
     void session_base::read_session_data()
     {
         assert(_ep.in_event_loop());
@@ -158,7 +160,11 @@ namespace wshttp
         evbuffer* input = bufferevent_get_input(_bev.get());
         auto inlen = evbuffer_get_length(input);
 
-        auto recv_len = nghttp2_session_mem_recv2(_session.get(), evbuffer_pullup(input, -1), inlen);
+        uspan data{evbuffer_pullup(input, -1), inlen};
+
+        log->debug("Received data from remote: {}", buffer_printer{data});
+
+        auto recv_len = nghttp2_session_mem_recv2(_session.get(), data.data(), inlen);
 
         if (recv_len < 0)
         {
@@ -166,9 +172,16 @@ namespace wshttp
             return close_session();
         }
 
+        if (evbuffer_drain(input, recv_len) != 0)
+        {
+            log->critical("Failed to drain input buffer! Closing session...");
+            return close_session();
+        }
+
         send_session_data();
     }
 
+    // called directly from the event loop
     void session_base::write_session_data()
     {
         assert(_ep.in_event_loop());
@@ -176,11 +189,11 @@ namespace wshttp
 
         if (evbuffer_get_length(bufferevent_get_output(_bev.get())) > 0)
         {
-            log->info("Figure out why nghttp2 returns here!");
+            log->debug("Session has more IO to go before more data transmission");
             return;
         }
 
-        if (not nghttp2_session_want_read(_session.get()) and not nghttp2_session_want_write(_session.get()))
+        if (nghttp2_session_want_read(_session.get()) == 0 && nghttp2_session_want_write(_session.get()) == 0)
         {
             log->warn("No more IO to go, closing session...");
             return close_session();
@@ -191,16 +204,14 @@ namespace wshttp
 
     void session_base::send_session_data()
     {
-        assert(_ep.in_event_loop());
-        log->trace("{} called", __PRETTY_FUNCTION__);
-
-        if (nghttp2_session_send(_session.get()) != 0)
-            throw std::runtime_error{"Failed to dispatch session data to remote: {}"_format(remote())};
-
-        log->info("Inbound session successfully dispatched session data to remote: {}", remote());
+        _ep.call([this]() {
+            log->trace("{} called", __PRETTY_FUNCTION__);
+            if (nghttp2_session_send(_session.get()) != 0)
+                throw std::runtime_error{"Failed to dispatch session data to remote: {}"_format(remote())};
+        });
     }
 
-    nghttp2_ssize session_base::send_hook(ustring data)
+    nghttp2_ssize session_base::send_hook(uspan data)
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -212,16 +223,18 @@ namespace wshttp
         }
 
         bufferevent_write(_bev.get(), data.data(), data.size());
+        log->debug("Session successfully dispatched data to remote ({}): {}", remote(), buffer_printer{data});
+
         return data.size();
     }
 
     void session_base::config_send_initial()
     {
-        assert(_ep.in_event_loop());
-        log->trace("{} called", __PRETTY_FUNCTION__);
-
-        initialize_session();
-        send_initial();
+        _ep.call([this]() {
+            log->trace("{} called", __PRETTY_FUNCTION__);
+            initialize_session();
+            send_initial();
+        });
     }
 
     std::shared_ptr<inbound_session> inbound_session::make(listener& l, ip_address remote, evutil_socket_t fd)
@@ -361,19 +374,12 @@ namespace wshttp
 
         nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, session_callbacks::on_frame_recv_callback);
 
-        // nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, nullptr);
-
-        // nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, nullptr);
-
         nghttp2_session_callbacks_set_send_callback2(callbacks, session_callbacks::send_callback);
 
         nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
 
         nghttp2_session_callbacks_set_on_begin_headers_callback(
                 callbacks, session_callbacks::on_begin_headers_callback);
-
-        // nghttp2_session_callbacks_set_before_frame_send_callback(callbacks, nullptr);
-        // nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, nullptr);
 
         if (auto rv = nghttp2_option_new(&opt); rv != 0)
             throw std::runtime_error{"Failed to create nghttp2 session option struct: {}"_format(nghttp2_strerror(rv))};
@@ -384,6 +390,8 @@ namespace wshttp
             throw std::runtime_error{"Failed to initialize inbound session: {}"_format(nghttp2_strerror(rv))};
 
         _session = _ep.template shared_ptr<nghttp2_session>(_sess, deleters::_session{});
+
+        nghttp2_session_callbacks_del(callbacks);
 
         log->info("Inbound session initialized and set callbacks!");
     }
@@ -424,16 +432,12 @@ namespace wshttp
 
         nghttp2_session_callbacks_set_on_header_callback(callbacks, session_callbacks::on_header_callback);
 
-        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(
-                callbacks, session_callbacks::on_data_chunk_recv_callback);
-        // nghttp2_session_callbacks_set_before_frame_send_callback(callbacks, nullptr);
-        // nghttp2_session_callbacks_set_on_frame_send_callback(callbacks, nullptr);
-        // nghttp2_session_callbacks_set_on_frame_not_send_callback(callbacks, nullptr);
-
         if (auto rv = nghttp2_session_client_new(&_sess, callbacks, this); rv != 0)
             throw std::runtime_error{"Failed to initialize outbound session: {}"_format(nghttp2_strerror(rv))};
 
         _session = _ep.template shared_ptr<nghttp2_session>(_sess, deleters::_session{});
+
+        nghttp2_session_callbacks_del(callbacks);
 
         log->info("Outbound session initialized and set callbacks!");
     }
@@ -443,13 +447,13 @@ namespace wshttp
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        req::settings _settings;
+        req::settings _settings{};
         _settings.add_setting(NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100);
 
         if (auto rv = nghttp2_submit_settings(_session.get(), NGHTTP2_FLAG_NONE, _settings, _settings.size()); rv != 0)
             throw std::runtime_error{"Failed to submit inbound session settings: {}"_format(nghttp2_strerror(rv))};
 
-        log->info("Inbound session successfully submitted nghttp2 settings!");
+        log->debug("Inbound session successfully submitted {} nghttp2 settings!", _settings.size());
 
         send_session_data();
     }
@@ -459,13 +463,13 @@ namespace wshttp
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        req::settings _settings;
+        req::settings _settings{};
         _settings.add_setting(NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100);
 
         if (auto rv = nghttp2_submit_settings(_session.get(), NGHTTP2_FLAG_NONE, _settings, _settings.size()); rv != 0)
             throw std::runtime_error{"Failed to submit outbound session settings: {}"_format(nghttp2_strerror(rv))};
 
-        log->info("Outbound session successfully submitted nghttp2 settings!");
+        log->info("Outbound session successfully submitted {} nghttp2 settings!", _settings.size());
     }
 
     int inbound_session::stream_close_hook(int32_t stream_id, uint32_t error_code)
@@ -617,6 +621,7 @@ namespace wshttp
                     }
                 }
                 break;
+
             default:
                 break;
         }
@@ -625,20 +630,37 @@ namespace wshttp
         return 0;
     }
 
-    int outbound_session::frame_recv_hook(const nghttp2_frame* frame)
-    {
-        assert(_ep.in_event_loop());
-        log->trace("{} called", __PRETTY_FUNCTION__);
+    // int inbound_session::frame_send_hook(const nghttp2_frame* frame)
+    // {
+    //     assert(_ep.in_event_loop());
+    //     log->trace("{} called", __PRETTY_FUNCTION__);
 
-        if (frame->hd.type == NGHTTP2_HEADERS and frame->headers.cat == NGHTTP2_HCAT_RESPONSE)
-            log->debug("All headers received on stream (ID: {})", frame->hd.stream_id);
+    //     auto& stream_id = frame->hd.stream_id;
 
-        return 0;
-    }
+    //     switch (frame->hd.type)
+    //     {
+    //         case NGHTTP2_DATA:
+    //             //
+
+    //         case NGHTTP2_HEADERS:
+    //             //
+    //             break;
+
+    //         // TODO:
+    //         case NGHTTP2_PUSH_PROMISE:
+    //             log->debug("Received HTTP2 push-promise frame");
+    //             break;
+
+    //         default:
+    //             break;
+    //     }
+
+    //     return 0;
+    // }
 
     std::shared_ptr<stream> inbound_session::make_stream(int32_t stream_id)
     {
         assert(_ep.in_event_loop());
-        return _ep.template shared_ptr<stream>(new stream{*this, _session, stream_id}, deleters::_stream{});
+        return _ep.template shared_ptr<stream>(new stream{*this, _session, stream_id}, stream::deleter{});
     }
 }  //  namespace wshttp

@@ -3,7 +3,6 @@
 #include "address.hpp"
 #include "request.hpp"
 #include "session.hpp"
-#include "types.hpp"
 
 namespace wshttp
 {
@@ -41,8 +40,6 @@ namespace wshttp
 
         uri _req;
 
-        int recv_data(ustring data);
-
         int recv_path_header(uspan path);
 
         int recv_header(req::headers hdr);
@@ -53,13 +50,7 @@ namespace wshttp
 
         int send_response(req::headers hdr);
 
-      public:
-        int fd() const { return _fd; }
-    };
-
-    namespace deleters
-    {
-        struct _stream
+        struct deleter
         {
             inline void operator()(stream* s) const
             {
@@ -67,6 +58,8 @@ namespace wshttp
                     ::close(s->fd());
             }
         };
-    }  // namespace deleters
 
+      public:
+        int fd() const { return _fd; }
+    };
 }  //  namespace wshttp

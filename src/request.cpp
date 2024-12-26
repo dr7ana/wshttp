@@ -111,6 +111,6 @@ namespace wshttp::req
 
     void settings::add_setting(int32_t id, uint32_t val)
     {
-        _settings.push_back(make_setting(id, val));
+        _settings.emplace_back(nghttp2_settings_entry{.settings_id = id, .value = val});
     }
 }  // namespace wshttp::req
