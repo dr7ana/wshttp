@@ -40,7 +40,7 @@ namespace wshttp
     static constexpr auto H2_ALPN = HTTP2_ALPNS.first<3>();
     static constexpr auto H2_16_ALPN = HTTP2_ALPNS.subspan<3, 6>();
     static constexpr auto H2_14_ALPN = HTTP2_ALPNS.subspan<9, 6>();
-    static constexpr std::array<uspan, 3> H2_ALPN_ARR{H2_ALPN, H2_16_ALPN, H2_14_ALPN};
+    static constexpr std::array<uspan, 3> H2_ALPNS{H2_ALPN, H2_16_ALPN, H2_14_ALPN};
 
     static auto next_sid = []() -> std::array<uint8_t, 2> {
         static std::unique_ptr<uint16_t> counter;
@@ -77,7 +77,7 @@ namespace wshttp
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        for (auto& a : H2_ALPN_ARR)
+        for (const auto& a : H2_ALPNS)
         {
             log->trace("Seeking ALPN: {}", a);
             for (auto *curr = in, *end = in + inlen; curr + a.size() <= end; curr += *curr + 1)
@@ -182,7 +182,7 @@ namespace wshttp
 
         if (_creds)
         {
-            log->debug("Configuring outbound context using user key/cert...");
+            log->debug("Configuring outbound context using user-provided key/cert...");
             check_rv(
                     SSL_CTX_use_PrivateKey_file(ctx, _creds->_keyfile.c_str(), SSL_FILETYPE_PEM),
                     "SSL CTX read private key file");
@@ -194,9 +194,10 @@ namespace wshttp
         else
         {
             log->debug("Configuring outbound context using system certs...");
-            // use default system certificate store for verification
-            check_rv(SSL_CTX_set_default_verify_paths(ctx), "SSL CTX set default verify paths");
         }
+
+        // initialize default system certificate store for verification
+        check_rv(SSL_CTX_set_default_verify_paths(ctx), "SSL CTX set default verify paths");
 
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
         SSL_CTX_set_alpn_protos(ctx, HTTP2_ALPNS.data(), HTTP2_ALPNS.size());

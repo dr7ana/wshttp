@@ -12,8 +12,8 @@ int main(int argc, char* argv[])
             "-L,--log-level", log_level, "Log verbosity lesvel; one of trace, debug, info, warn, error, or critical");
 
     std::string key_path, cert_path;
-    cli.add_option("-K, --keyfile", key_path, "Path to private key file")->required();
-    cli.add_option("-C, --certfile", cert_path, "Path to cert file")->required();
+    cli.add_option("-K, --keyfile", key_path, "Path to private key file") /* ->required() */;
+    cli.add_option("-C, --certfile", cert_path, "Path to cert file") /* ->required() */;
 
     try
     {

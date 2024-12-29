@@ -1,13 +1,10 @@
 #pragma once
 
-#include "types.hpp"
-
-#define OPENSSL_API_COMPAT 30000
+#include "crypto.hpp"
 
 extern "C" {
 #include <openssl/conf.h>
 #include <openssl/decoder.h>
-#include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/types.h>
 }

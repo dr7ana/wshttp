@@ -9,9 +9,25 @@ namespace wshttp
 {
     inline namespace types
     {
-        template <enc::basic_char T = char, size_t N = std::dynamic_extent>
-        using const_span = std::span<const T, N>;
-    }  // namespace types
+        inline namespace span
+        {
+            template <enc::basic_char T = char, size_t N = std::dynamic_extent>
+            using const_span = std::span<const T, N>;
+        }
+
+        inline namespace unique_ptr
+        {
+            template <class T, class deleter>
+            class custom_unique_ptr : std::unique_ptr<T, deleter>
+            {
+                using std::unique_ptr<T, deleter>::unique_ptr;
+
+                operator const T*() const { return this->get(); }
+
+                operator T*() { return this->get(); }
+            };
+        }  // namespace unique_ptr
+    }      // namespace types
 
     using cspan = const_span<char>;
     using uspan = const_span<unsigned char>;
@@ -28,45 +44,28 @@ namespace wshttp
     concept const_contiguous_range_t = std::ranges::contiguous_range<const R> &&
                                        std::same_as<std::remove_cvref_t<T>, std::ranges::range_value_t<const R>>;
 
-    template <typename T, size_t N, const_contiguous_range_t<T> R>
-    bool operator==(const_span<T, N> lhs, const R& rhs)
+    inline namespace operators
     {
-        return std::ranges::equal(lhs, rhs);
-    }
+        inline namespace span
+        {
+            template <typename T, size_t N, const_contiguous_range_t<T> R>
+            bool operator==(const_span<T, N> lhs, const R& rhs)
+            {
+                return std::ranges::equal(lhs, rhs);
+            }
 
-    template <typename T, size_t N, const_contiguous_range_t<T> R>
-    auto operator<=>(const_span<T, N> lhs, const R& rhs)
-    {
-        return std::lexicographical_compare_three_way(
-                lhs.begin(), lhs.end(), std::ranges::begin(rhs), std::ranges::end(rhs));
-    }
+            template <typename T, size_t N, const_contiguous_range_t<T> R>
+            auto operator<=>(const_span<T, N> lhs, const R& rhs)
+            {
+                return std::lexicographical_compare_three_way(
+                        lhs.begin(), lhs.end(), std::ranges::begin(rhs), std::ranges::end(rhs));
+            }
+        }  // namespace span
+
+    }  // namespace operators
 
     namespace detail
     {
-        using void_ptr_t = void*;
-
-        template <typename T>
-        concept pointer_t = std::is_pointer_v<T>;
-
-        // template: class, function, function arg/method return type/none
-        template <typename>
-        struct deleter;
-
-        // creates a deleter that invokes a hook taking a class object ptr as an argument
-        template <typename T>
-        struct deleter
-        {
-            consteval deleter(void (*func)(T*)) : hook{func} {}
-
-            void (*hook)(T*);
-
-            inline void operator()(T* t) const
-            {
-                if (hook and t)
-                    hook(t);
-            }
-        };
-
         template <enc::basic_char T, size_t N>
         struct span_literal
         {
@@ -99,7 +98,6 @@ namespace wshttp
         {
             consteval usp_literal(const char (&s)[N]) : span_literal<unsigned char, N>{s} {}
         };
-
     }  // namespace detail
 
     inline namespace literals

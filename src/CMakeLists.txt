@@ -6,16 +6,17 @@ add_library(
 
     address.cpp
     callbacks.cpp
-    ssl_context.cpp
+    crypto.cpp
     dns.cpp
+    endpoint.cpp
     format.cpp
     listener.cpp
-    endpoint.cpp
     loop.cpp
     node.cpp
     parser.cpp
     request.cpp
     session.cpp
+    ssl_context.cpp
     stream.cpp
     types.cpp
     utils.cpp
