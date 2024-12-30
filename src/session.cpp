@@ -172,7 +172,7 @@ namespace wshttp
             return close_session();
         }
 
-        if (evbuffer_drain(input, recv_len) != 0)
+        if (evbuffer_drain(input, static_cast<size_t>(recv_len)) != 0)
         {
             log->critical("Failed to drain input buffer! Closing session...");
             return close_session();
@@ -204,11 +204,9 @@ namespace wshttp
 
     void session_base::send_session_data()
     {
-        _ep.call([this]() {
-            log->trace("{} called", __PRETTY_FUNCTION__);
-            if (nghttp2_session_send(_session.get()) != 0)
-                throw std::runtime_error{"Failed to dispatch session data to remote: {}"_format(remote())};
-        });
+        log->trace("{} called", __PRETTY_FUNCTION__);
+        if (nghttp2_session_send(_session.get()) != 0)
+            throw std::runtime_error{"Failed to dispatch session data to remote: {}"_format(remote())};
     }
 
     nghttp2_ssize session_base::send_hook(uspan data)

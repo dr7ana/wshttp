@@ -3,7 +3,7 @@
 #include "endpoint.hpp"
 #include "internal.hpp"
 #include "session.hpp"
-#include "ssl_context.hpp"
+#include "ssl.hpp"
 
 namespace wshttp
 {

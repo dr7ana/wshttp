@@ -61,8 +61,7 @@ namespace wshttp
                         lhs.begin(), lhs.end(), std::ranges::begin(rhs), std::ranges::end(rhs));
             }
         }  // namespace span
-
-    }  // namespace operators
+    }      // namespace operators
 
     namespace detail
     {

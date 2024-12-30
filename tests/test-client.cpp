@@ -29,7 +29,8 @@ int main(int argc, char* argv[])
     std::shared_ptr<wshttp::ssl_creds> creds;
 
     auto loop = wshttp::event_loop::make();
-    creds = wshttp::ssl_creds::make(key_path, cert_path);
+    // creds = wshttp::ssl_creds::make(key_path, cert_path);
+    creds = wshttp::ssl_creds::make();
 
     std::shared_ptr<wshttp::endpoint> ep;
 

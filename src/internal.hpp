@@ -137,4 +137,47 @@ namespace wshttp
                 nghttp2_data_source* source,
                 void* user_arg);
     };
+
+    template <size_t N>
+    struct datum
+    {
+      private:
+        std::array<uint8_t, N> buf{};
+
+        datum(const uint8_t* data, size_t sz) { write(data, sz); }
+
+      public:
+        datum() = default;
+
+        template <enc::basic_char T>
+        datum(const_span<T> data) : datum{reinterpret_cast<const uint8_t*>(data.data()), data.size()}
+        {}
+
+        datum(const datum& other) : datum{other.buf.data(), other.buf.size()} {}
+
+        datum& operator=(const datum& other)
+        {
+            buf = other.buf;
+            return *this;
+        }
+
+        inline void write(const uint8_t* data, size_t sz)
+        {
+            if (sz != N)
+                throw std::invalid_argument{"Datum size must be {}"_format(N)};
+
+            std::memcpy(buf.data(), data, sz);
+        }
+
+        template <enc::basic_char T = uint8_t>
+        const_span<T> span() const
+        {
+            return {reinterpret_cast<const T*>(buf.data()), buf.size()};
+        }
+
+        explicit operator bool() const { return !buf.empty(); }
+
+        bool operator<=>(const datum& other) const { return buf <=> other.buf; }
+    };
+
 }  // namespace wshttp

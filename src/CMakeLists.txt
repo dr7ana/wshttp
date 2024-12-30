@@ -6,7 +6,6 @@ add_library(
 
     address.cpp
     callbacks.cpp
-    crypto.cpp
     dns.cpp
     endpoint.cpp
     format.cpp
@@ -16,7 +15,7 @@ add_library(
     parser.cpp
     request.cpp
     session.cpp
-    ssl_context.cpp
+    ssl.cpp
     stream.cpp
     types.cpp
     utils.cpp

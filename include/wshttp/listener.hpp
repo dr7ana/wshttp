@@ -1,7 +1,7 @@
 #pragma once
 
 #include "address.hpp"
-#include "ssl_context.hpp"
+#include "ssl.hpp"
 
 extern "C" {
 #include <event2/listener.h>
