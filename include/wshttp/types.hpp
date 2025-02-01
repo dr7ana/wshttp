@@ -1,6 +1,7 @@
 #pragma once
 
 #include "encoding.hpp"
+#include "utils.hpp"
 
 #include <cstdint>
 #include <span>

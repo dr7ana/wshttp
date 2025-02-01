@@ -154,29 +154,37 @@ namespace wshttp
     // called directly from the event loop
     void session_base::read_session_data()
     {
+        static thread_local std::array<uint8_t, 4096> buf;
+        buf = {};
+
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        evbuffer* input = bufferevent_get_input(_bev.get());
-        auto inlen = evbuffer_get_length(input);
+        auto nread = bufferevent_read(_bev.get(), buf.data(), buf.size());
 
-        uspan data{evbuffer_pullup(input, -1), inlen};
+        // evbuffer* input = bufferevent_get_input(_bev.get());
+        // auto datalen = evbuffer_get_length(input);
 
-        log->debug("Received data from remote: {}", buffer_printer{data});
+        // uspan data{evbuffer_pullup(input, -1), datalen};
 
-        auto recv_len = nghttp2_session_mem_recv2(_session.get(), data.data(), inlen);
+        log->debug("Received data from remote: {}", buffer_printer{buf.data(), nread});
+
+        // auto recv_len = nghttp2_session_mem_recv2(_session.get(), data.data(), datalen);
+        auto recv_len = nghttp2_session_mem_recv2(_session.get(), buf.data(), nread);
+
+        log->critical("bev read={}, nghttp2_memrecv={}", nread, recv_len);
 
         if (recv_len < 0)
         {
-            log->critical("Fatal error reading {}B from bufferevent: {}", inlen, nghttp2_strerror(recv_len));
+            log->critical("Fatal error reading {}B from bufferevent: {}", nread, nghttp2_strerror(recv_len));
             return close_session();
         }
 
-        if (evbuffer_drain(input, static_cast<size_t>(recv_len)) != 0)
-        {
-            log->critical("Failed to drain input buffer! Closing session...");
-            return close_session();
-        }
+        // if (evbuffer_drain(input, static_cast<size_t>(recv_len)) != 0)
+        // {
+        //     log->critical("Failed to drain input buffer! Closing session...");
+        //     return close_session();
+        // }
 
         send_session_data();
     }
