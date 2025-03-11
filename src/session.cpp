@@ -151,6 +151,13 @@ namespace wshttp
         return s.begin_headers_hook(frame);
     }
 
+    std::shared_ptr<stream> session_base::get_stream(int32_t id)
+    {
+        if (auto it = _streams.find(id); it != _streams.end())
+            return it->second;
+        return nullptr;
+    }
+
     // called directly from the event loop
     void session_base::read_session_data()
     {
@@ -236,7 +243,7 @@ namespace wshttp
 
     void session_base::config_send_initial()
     {
-        _ep.call([this]() {
+        _ep.loop()->call([this]() {
             log->trace("{} called", __PRETTY_FUNCTION__);
             initialize_session();
             send_initial();
@@ -248,12 +255,25 @@ namespace wshttp
         return l._ep.template make_shared<inbound_session>(l, std::move(remote), fd);
     }
 
+    SSL* outbound_node::new_ssl()
+    {
+        assert(_ep.in_event_loop());
+        return _ep.loop()->call_get([&]() {
+            SSL* _ssl = SSL_new(_ep.outbound_ctx());
+
+            if (!_ssl)
+                throw std::runtime_error{"Failed to create SSL/TLS for inbound: {}"_format(detail::current_error())};
+
+            return _ssl;
+        });
+    }
+
     inbound_session::~inbound_session()
     {
         log->trace("Inbound session (path: {}) deleted...", _path);
     }
 
-    outbound_session::~outbound_session()
+    outbound_node::~outbound_node()
     {
         log->trace("Outbound session (path: {}) deleted...", _path);
     }
@@ -303,10 +323,10 @@ namespace wshttp
         log->info("Successfully configured inbound session; path: {}", _path);
     }
 
-    void outbound_session::_init_internals()
+    void outbound_node::_init_internals()
     {
         assert(_ep.in_event_loop());
-        _ssl.reset(_n.new_ssl());
+        _ssl.reset(new_ssl());
 
         if (not _ssl)
             throw std::runtime_error{"Failed to emplace SSL pointer for new outbound session"};
@@ -329,8 +349,7 @@ namespace wshttp
 
         bufferevent_enable(_bev.get(), EV_READ | EV_WRITE);
 
-        if (bufferevent_socket_connect_hostname(_bev.get(), *_ep._dns, AF_INET, get_uri().host().data(), HTTPS_PORT) !=
-            0)
+        if (bufferevent_socket_connect_hostname(_bev.get(), *_ep._dns, AF_INET, _uri.host().data(), HTTPS_PORT) != 0)
             throw std::runtime_error{"Could not connect to remote host: {}"_format(detail::current_error())};
 
         log->info("Successfully configured outbound session; path: {}", _path);
@@ -341,13 +360,11 @@ namespace wshttp
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        _ep.call_soon([&]() {
-            log->info("Session (path: {}) signaled listener to close connection...", _path);
-            _lst.close_session(_path.remote());
-        });
+        log->info("Session (path: {}) signaling listener to close connection...", _path);
+        _lst.close_session(_path.remote());
     }
 
-    void outbound_session::on_connect()
+    void outbound_node::on_connect()
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -355,15 +372,26 @@ namespace wshttp
         //
     }
 
-    void outbound_session::close_session()
+    void outbound_node::close()
+    {
+        assert(_ep.in_event_loop());
+        _ep.loop()->call_soon([wep = _ep.weak_from_this(), dh = _uri.host_url()]() mutable {
+            if (auto ep = wep.lock())
+            {
+                ep->close_node(dh);
+            }
+            else
+                log->warn("Endpoint closed before outbound session could be closed");
+        });
+    }
+
+    void outbound_node::close_session()
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        _ep.call_soon([&]() {
-            log->info("Session (path: {}) signaled node to close connection...", _path);
-            _n.close_session(_host);
-        });
+        log->info("Session (path: {}) signaling endpoint to close outbound connection...", _path);
+        close();
     }
 
     void inbound_session::initialize_session()
@@ -402,7 +430,7 @@ namespace wshttp
         log->info("Inbound session initialized and set callbacks!");
     }
 
-    void outbound_session::initialize_session()
+    void outbound_node::initialize_session()
     {
         assert(_ep.in_event_loop());
 
@@ -416,11 +444,11 @@ namespace wshttp
 
         if (getsockname(_fd, &_laddr, &len) < 0)
             throw std::runtime_error{"Failed to get local socket address for outbound (host: {}): {}, {}"_format(
-                    _host, detail::current_error(), errno)};
+                    _uri.host(), detail::current_error(), errno)};
 
         _path._local = ip_address{&_laddr};
 
-        log->debug("Outbound session (host: {}) has local socket address: {}", _host, _path.local());
+        log->debug("Outbound session (host: {}) has local socket address: {}", _uri.host(), _path.local());
 
         nghttp2_session* _sess;
         nghttp2_session_callbacks* callbacks;
@@ -464,7 +492,7 @@ namespace wshttp
         send_session_data();
     }
 
-    void outbound_session::send_initial()
+    void outbound_node::send_initial()
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -492,7 +520,7 @@ namespace wshttp
         return 0;
     }
 
-    int outbound_session::stream_close_hook(int32_t stream_id, uint32_t error_code)
+    int outbound_node::stream_close_hook(int32_t stream_id, uint32_t error_code)
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -523,31 +551,27 @@ namespace wshttp
             return 0;
         }
 
-        return _ep.call_get([&]() {
-            auto& stream_id = frame->hd.stream_id;
+        const auto& stream_id = frame->hd.stream_id;
 
-            // create stream
-            auto [itr, b] = _streams.try_emplace(stream_id, nullptr);
+        // create stream
+        auto [itr, b] = _streams.try_emplace(stream_id, nullptr);
 
-            if (not b)
-            {
-                log->error("Already have stream with stream-id:{}!", stream_id);
-                // TODO: something...
-                return 0;
-            }
-
-            itr->second = make_stream(stream_id);
-
-            if (not itr->second)
-                throw std::runtime_error{"Failed to construct stream (id: {})"_format(stream_id)};
-
-            nghttp2_session_set_stream_user_data(_session.get(), stream_id, itr->second.get());
-
+        if (not b)
+        {
+            log->error("Already have stream with stream-id:{}!", stream_id);
+            // TODO: something...
             return 0;
-        });
+        }
+
+        itr->second = make_stream(stream_id);
+
+        if (not itr->second)
+            throw std::runtime_error{"Failed to construct stream (id: {})"_format(stream_id)};
+
+        return 0;
     }
 
-    int outbound_session::begin_headers_hook(const nghttp2_frame* frame)
+    int outbound_node::begin_headers_hook(const nghttp2_frame* frame)
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -564,28 +588,29 @@ namespace wshttp
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
+        auto& stream_id = frame->hd.stream_id;
 
         if (frame->hd.type != NGHTTP2_HEADERS or frame->headers.cat != NGHTTP2_HCAT_REQUEST)
         {
             log->debug("Ignoring non-header and non hcat-request frames...");
+            return 0;
         }
         else if (req::fields::path == name)
         {
-            auto& stream_id = frame->hd.stream_id;
-
-            if (auto it = _streams.find(stream_id); it != _streams.end())
-                return it->second->recv_path_header(value);
-
-            log->critical("Could not find inbound stream of id:{} to recv header!", stream_id);
-            return NGHTTP2_ERR_CALLBACK_FAILURE;
+            if (auto stream = get_stream(stream_id))
+                return stream->recv_path_header(name);
         }
         else
-            log->debug("Received unhandled header type on inbound session (remote: {})", _path.remote());
+        {
+            if (auto stream = get_stream(stream_id))
+                return stream->recv_header(req::headers{name, value});
+        }
 
-        return 0;
+        log->critical("Could not find inbound stream of id:{} to recv header!", stream_id);
+        return NGHTTP2_ERR_CALLBACK_FAILURE;
     }
 
-    int outbound_session::recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value)
+    int outbound_node::recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value)
     {
         assert(_ep.in_event_loop());
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -598,8 +623,8 @@ namespace wshttp
 
         auto& stream_id = frame->hd.stream_id;
 
-        if (auto it = _streams.find(stream_id); it != _streams.end())
-            return it->second->recv_header(req::headers{name, value});
+        if (auto stream = get_stream(stream_id))
+            return stream->recv_header(req::headers{name, value});
 
         log->warn("Could not find outbound stream of id:{} to recv header!", stream_id);
         return NGHTTP2_ERR_CALLBACK_FAILURE;
@@ -615,11 +640,13 @@ namespace wshttp
         switch (frame->hd.type)
         {
             case NGHTTP2_DATA:
+                //
+                break;
             case NGHTTP2_HEADERS:
                 if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM)
                 {
-                    if (auto it = _streams.find(stream_id); it != _streams.end())
-                        return it->second->recv_frame();
+                    if (auto stream = get_stream(stream_id))
+                        return stream->recv_frame();
                     else
                     {
                         log->critical("Could not find stream of id:{} to process incoming frame!", stream_id);
@@ -633,6 +660,12 @@ namespace wshttp
         }
 
         log->debug("Received nghttp2_frame_type value: {}", static_cast<int>(frame->hd.type));
+        return 0;
+    }
+
+    int outbound_node::frame_recv_hook(const nghttp2_frame* frame)
+    {
+        (void)frame;
         return 0;
     }
 

@@ -9,6 +9,20 @@ extern "C" {
 
 namespace wshttp
 {
+    class local_node
+    {
+      protected:
+        ip_address _local{};
+
+        virtual void _init_internals() = 0;
+
+      public:
+        local_node(ip_address l) : _local{std::move(l)} {}
+
+        virtual SSL* new_ssl() = 0;
+        virtual void close() = 0;
+    };
+
     class app_context;
     class endpoint;
     class inbound_session;
@@ -58,6 +72,6 @@ namespace wshttp
 
         void close_session(ip_address remote);
 
-        void create_inbound_session(ip_address remote, evutil_socket_t fd);
+        void create_session(ip_address remote, evutil_socket_t fd);
     };
 }  //  namespace wshttp

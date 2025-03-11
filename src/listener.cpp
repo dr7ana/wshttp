@@ -14,7 +14,7 @@ namespace wshttp
             void* user_arg)
     {
         auto& l = *static_cast<listener*>(user_arg);
-        l.create_inbound_session(ip_address{addr}, fd);
+        l.create_session(ip_address{addr}, fd);
     }
 
     void listen_callbacks::error_cb(struct evconnlistener* /* evconn */, void* user_arg)
@@ -29,7 +29,7 @@ namespace wshttp
         log->debug("Closing listener on port: {}", _local.port());
     }
 
-    void listener::create_inbound_session(ip_address remote, evutil_socket_t fd)
+    void listener::create_session(ip_address remote, evutil_socket_t fd)
     {
         assert(_ep.in_event_loop());
         log->info("Inbound connection established (fd: {}, remote: {})", fd, remote);
@@ -55,7 +55,7 @@ namespace wshttp
     void listener::close_all()
     {
         assert(_ep.in_event_loop());
-        _ep.call([&]() {
+        _ep.loop()->call([&]() {
             log->info("listener (port:{}) closing all sessions...", _local.port());
             _sessions.clear();
         });
@@ -63,14 +63,17 @@ namespace wshttp
 
     void listener::close_listener()
     {
-        assert(_ep.in_event_loop());
-        _ep.call_soon([&]() { _ep.close_listener(_local.port()); });
+        _ep.loop()->call_soon([wep = _ep.weak_from_this(), p = _local.port()]() mutable {
+            if (auto ep = wep.lock())
+                ep->close_listener(p);
+            else
+                log->warn("Endpoint closed before outbound session could be closed");
+        });
     }
 
     void listener::close_session(ip_address remote)
     {
-        assert(_ep.in_event_loop());
-        _ep.call([&]() {
+        _ep.loop()->call_soon([&]() {
             if (_sessions.erase(remote))
                 log->info("Listener closed session to remote: {}", remote);
             else

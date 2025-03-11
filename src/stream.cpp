@@ -41,7 +41,7 @@ namespace wshttp
         log->debug("Inbound stream (ID: {}) created!", _id);
     }
 
-    stream::stream(outbound_session& s, const session_ptr& sess, int32_t id) :
+    stream::stream(outbound_node& s, const session_ptr& sess, int32_t id) :
             _s{s}, _session{sess.get(), deleters::_session{}}, dir{IO::OUTBOUND}, _id{id}
     {
         log->debug("Outbound stream (ID: {}) created!", _id);
@@ -60,6 +60,14 @@ namespace wshttp
         log->trace("{} called", __PRETTY_FUNCTION__);
 
         hdr.print();
+
+        if (dir == IO::INBOUND)
+        {
+        }
+        else
+        {
+        }
+
         return 0;
     }
 
@@ -92,6 +100,16 @@ namespace wshttp
         return rv;
     }
 
+    int stream::submit_stream_rst(uint32_t ec)
+    {
+        if (nghttp2_submit_rst_stream(_session.get(), NGHTTP2_FLAG_NONE, _id, ec) != 0)
+        {
+            log->critical("Could not submit stream reset! Fatal error!");
+            return NGHTTP2_ERR_FATAL;
+        }
+        return 0;
+    }
+
     int stream::send_error()
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
@@ -99,12 +117,7 @@ namespace wshttp
         if (pipe(_pipes.data()) != 0)
         {
             log->warn("Failed to create pipes to send error! Resetting stream");
-            if (nghttp2_submit_rst_stream(_session.get(), NGHTTP2_FLAG_NONE, _id, NGHTTP2_INTERNAL_ERROR) != 0)
-            {
-                log->critical("Could not submit stream reset! Fatal error!");
-                return NGHTTP2_ERR_FATAL;
-            }
-            return 0;
+            return submit_stream_rst(NGHTTP2_INTERNAL_ERROR);
         }
 
         ssize_t errlen = sizeof(req::errors::HTML) - 1;
@@ -131,7 +144,7 @@ namespace wshttp
     int stream::send_response(req::headers hdrs)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
-        return _s._ep.call_get([&]() -> int {
+        return _s._ep.loop()->call_get([&]() -> int {
             nghttp2_data_provider2 _prv{.source = {_fd}, .read_callback = stream_callbacks::file_read_callback};
 
             if (auto rv = nghttp2_submit_response2(_session.get(), _id, hdrs, hdrs.size(), &_prv); rv != 0)

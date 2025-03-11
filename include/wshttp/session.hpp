@@ -1,11 +1,9 @@
 #pragma once
 
 #include "listener.hpp"
-#include "node.hpp"
 
 namespace wshttp
 {
-    class node;
     class stream;
     class endpoint;
 
@@ -47,9 +45,11 @@ namespace wshttp
         bufferevent_ptr _bev;
 
         session_ptr _session;
-        std::unordered_map<uint32_t, std::shared_ptr<stream>> _streams;
+        std::unordered_map<int32_t, std::shared_ptr<stream>> _streams;
 
         bool _is_outbound{false};
+
+        std::shared_ptr<stream> get_stream(int32_t id);
 
         void read_session_data();
 
@@ -66,6 +66,8 @@ namespace wshttp
         virtual void send_initial() = 0;
 
         virtual int begin_headers_hook(const nghttp2_frame* frame) = 0;
+
+        virtual int frame_recv_hook(const nghttp2_frame* frame) = 0;
 
         virtual int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) = 0;
 
@@ -121,7 +123,7 @@ namespace wshttp
         inbound_session(inbound_session&&) = delete;
         inbound_session& operator=(inbound_session&&) = delete;
 
-        ~inbound_session();
+        ~inbound_session() override;
 
       protected:
         listener& _lst;
@@ -136,7 +138,7 @@ namespace wshttp
 
         int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) override;
 
-        int frame_recv_hook(const nghttp2_frame* frame);
+        int frame_recv_hook(const nghttp2_frame* frame) override;
 
         // int frame_send_hook(const nghttp2_frame* frame);
 
@@ -147,28 +149,27 @@ namespace wshttp
         void close_session() override;
     };
 
-    class outbound_session final : public session_base
+    class outbound_node final : public local_node, public session_base
     {
-        // friend class stream;
-        friend class node;
-        friend struct session_callbacks;
-
-      public:
-        outbound_session(node& n, evutil_socket_t fd, std::optional<ip_address> local = std::nullopt) :
-                session_base{n._ep, fd, path{local ? std::move(*local) : ip_address{}, {}}, true},
-                _n{n},
-                _host{_n._uri.host()}
+        outbound_node(endpoint& ep, uri _u, evutil_socket_t fd, ip_address local = ip_address{}) :
+                local_node{std::move(local)}, session_base{ep, fd, path{_local, {}}, true}, _uri{_u}
         {
             _init_internals();
         }
 
-        ~outbound_session();
+      private:
+        uri _uri;
 
-      protected:
-        node& _n;
-        std::string _host;
+      public:
+        outbound_node() = delete;
 
-        void _init_internals();
+        ~outbound_node() override;
+
+        SSL* new_ssl() override;
+
+        void close() override;
+
+        void _init_internals() override;
 
         void initialize_session() override;
 
@@ -178,14 +179,12 @@ namespace wshttp
 
         int recv_header_hook(const nghttp2_frame* frame, uspan name, uspan value) override;
 
+        int frame_recv_hook(const nghttp2_frame* frame) override;
+
         int stream_close_hook(int32_t stream_id, uint32_t error_code = 0) override;
 
         void on_connect();
 
         void close_session() override;
-
-      private:
-        uri& get_uri() { return _n._uri; }
     };
-
 }  //  namespace wshttp

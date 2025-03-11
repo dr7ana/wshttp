@@ -4,7 +4,7 @@
 
 namespace wshttp::req
 {
-    constexpr uspan _field(FIELD f)
+    constexpr uspan _from_field(FIELD f)
     {
         switch (f)
         {
@@ -50,9 +50,9 @@ namespace wshttp::req
     static nghttp2_nv make_header(FIELD f, uspan& v, nghttp2_nv_flag flags)
     {
         return nghttp2_nv{
-                const_cast<uint8_t*>(_field(f).data()),
+                const_cast<uint8_t*>(_from_field(f).data()),
                 const_cast<uint8_t*>(v.data()),
-                _field(f).size(),
+                _from_field(f).size(),
                 v.size(),
                 static_cast<uint8_t>(flags | NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE)};
     }

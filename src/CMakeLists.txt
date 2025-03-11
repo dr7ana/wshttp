@@ -11,7 +11,6 @@ add_library(
     format.cpp
     listener.cpp
     loop.cpp
-    node.cpp
     parser.cpp
     request.cpp
     session.cpp

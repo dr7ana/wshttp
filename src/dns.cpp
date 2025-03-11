@@ -143,7 +143,7 @@ namespace wshttp
 
         void server::initialize()
         {
-            _ep.call_get([&]() {
+            _ep.loop()->call_get([&]() {
                 sockaddr_in _bind;
 
                 _udp_sock = socket(PF_INET, SOCK_DGRAM, 0);

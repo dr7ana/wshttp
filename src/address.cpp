@@ -36,9 +36,14 @@ namespace wshttp
                     std::string{_hr}}
     {}
 
-    uri uri::parse(std::string url)
+    uri uri::parse(const char* c, size_t s)
     {
-        return parser->read(std::move(url)) ? parser->extract() : uri{};
+        return parser->read(std::string{c, s}) ? parser->extract() : uri{};
+    }
+
+    domain_host uri::host_url() const
+    {
+        return domain_host{host()};
     }
 
     void uri::print_contents() const

@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
         ep->listen(5544);
         ep->listen(5545);
         ep->listen(5546);
-        // ep->test_parse_method("http://www.google.com");
+        ep->test_parse_method("https://www.google.com");
         // ep->connect("https://www.google.com");
     }
     catch (const std::exception& e)

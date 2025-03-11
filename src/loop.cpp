@@ -188,6 +188,33 @@ namespace wshttp
         return std::shared_ptr<event_loop>{new event_loop{}};
     }
 
+    static struct event_base* try_make_et_evbase()
+    {
+        static std::array<int, 2> features{EV_FEATURE_ET, 0};
+        static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
+
+        log->trace(
+                "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
+
+        std::unique_ptr<event_config, decltype(&event_config_free)> ev_conf{event_config_new(), event_config_free};
+        event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_PRECISE_TIMER);
+        event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_NO_CACHE_TIME);
+        event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_EPOLL_USE_CHANGELIST);
+
+        for (auto& feature : features)
+        {
+            event_config_require_features(ev_conf.get(), feature);
+
+            if (auto base = event_base_new_with_config(ev_conf.get()))
+            {
+                log->debug("Edge-triggered IO {}abled for libevent event base...", feature ? "en" : "dis");
+                return base;
+            }
+        }
+
+        throw std::runtime_error{"Failed to create edge-triggered or standard I/O event base!"};
+    }
+
     event_loop::event_loop()
     {
         log->trace("Beginning loop context creation with new ev loop thread");
@@ -217,17 +244,7 @@ namespace wshttp
 #endif
         }
 
-        static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
-
-        log->trace(
-                "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
-
-        std::unique_ptr<event_config, decltype(&event_config_free)> ev_conf{event_config_new(), event_config_free};
-        event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_PRECISE_TIMER);
-        event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_NO_CACHE_TIME);
-        event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_EPOLL_USE_CHANGELIST);
-
-        ev_loop = std::shared_ptr<event_base>{event_base_new_with_config(ev_conf.get()), event_base_free};
+        ev_loop = std::shared_ptr<event_base>{try_make_et_evbase(), event_base_free};
 
         log->debug("Started libevent loop with backend {}", event_base_get_method(ev_loop.get()));
 

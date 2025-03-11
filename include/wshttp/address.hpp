@@ -12,6 +12,8 @@ namespace wshttp
     static constexpr auto HTTPS_SCHEME = "https:"sv;
     static constexpr auto HTTP_SCHEME = "http:"sv;
 
+    struct domain_host;
+
     struct uri
     {
         friend class url_parser;
@@ -31,6 +33,8 @@ namespace wshttp
                 const std::string_view& _f,
                 const std::string_view& _hr);
 
+        static uri parse(const char* c, size_t s);
+
       public:
         std::array<std::string, URI_FIELDS> _fields{};
 
@@ -40,7 +44,7 @@ namespace wshttp
             return uri::parse(std::string{reinterpret_cast<const char*>(u.data()), u.size()});
         }
 
-        static uri parse(std::string u);
+        static uri parse(std::string_view u) { return uri::parse(u.data(), u.size()); }
 
         std::string_view scheme() const { return _fields[_scheme]; }
         std::string_view userinfo() const { return _fields[_userinfo]; }
@@ -51,14 +55,37 @@ namespace wshttp
         std::string_view fragment() const { return _fields[_fragment]; }
         std::string_view href() const { return _fields[_href]; }
 
+        domain_host host_url() const;
+
         void print_contents() const;
 
         bool empty() const { return _fields.empty(); }
 
         explicit operator bool() const { return !empty(); }
 
-        auto operator<=>(const uri& u) { return _fields <=> u._fields; }
-        bool operator==(const uri& u) { return (*this <=> u) == 0; }
+        auto operator<=>(const uri& u) const { return _fields <=> u._fields; }
+        bool operator==(const uri& u) const { return (*this <=> u) == 0; }
+    };
+
+    struct domain_host final
+    {
+        friend struct uri;
+
+        domain_host() = delete;
+
+      protected:
+        domain_host(std::string_view u) : _host{u} {}
+
+        std::string _host{};
+
+      public:
+        std::string_view host() const { return _host; }
+
+        auto operator<=>(const domain_host& d) const { return _host <=> d._host; }
+        bool operator==(const domain_host& d) const { return (*this <=> d) == 0; }
+
+        std::string to_string() const { return _host; }
+        static constexpr bool to_string_formattable = true;
     };
 
     struct ipv4
@@ -233,16 +260,6 @@ namespace wshttp
         static constexpr bool to_string_formattable = true;
     };
 
-    // TODO: unify address type sinto this main container
-    struct address
-    {
-      private:
-        // sockaddr_storage _sockaddr{};
-        // uint16_t _port{};
-
-      public:
-        //
-    };
 }  //  namespace wshttp
 
 namespace std
@@ -278,9 +295,12 @@ namespace std
     template <>
     struct hash<wshttp::uri>
     {
-        size_t operator()(const wshttp::uri& u) const noexcept
-        {
-            return hash<string_view>{}(u.href());  // TODO: hash to href
-        }
+        size_t operator()(const wshttp::uri& u) const noexcept { return hash<string_view>{}(u.href()); }
+    };
+
+    template <>
+    struct hash<wshttp::domain_host>
+    {
+        size_t operator()(const wshttp::domain_host& u) const noexcept { return hash<string_view>{}(u.host()); }
     };
 }  //  namespace std

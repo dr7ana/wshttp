@@ -40,16 +40,22 @@ namespace wshttp
         });
     }
 
+    void endpoint::close_node(domain_host d)
+    {
+        assert(in_event_loop());
+        if (_outbounds.erase(d))
+            log->info("Endpoint closed outbound node to domain host: {}", d);
+        else
+            log->warn("Endpoint failed to find outbound node (domain host: {}) to close!", d);
+    }
+
     void endpoint::close_listener(uint16_t p)
     {
-        return _loop->call_get([&]() {
-            if (_listeners.erase(p))
-            {
-                log->info("Endpoint closed listener on port: {}", p);
-            }
-            else
-                log->warn("Endpoint failed to find listener (port: {}) to close!", p);
-        });
+        assert(in_event_loop());
+        if (_listeners.erase(p))
+            log->info("Endpoint closed listener on port: {}", p);
+        else
+            log->warn("Endpoint failed to find listener (port: {}) to close!", p);
     }
 
     void endpoint::shutdown_endpoint()

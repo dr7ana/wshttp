@@ -2,9 +2,8 @@
 
 #include "dns.hpp"
 #include "format.hpp"
-#include "listener.hpp"
 #include "loop.hpp"
-#include "node.hpp"
+#include "session.hpp"
 
 namespace wshttp
 {
@@ -17,12 +16,11 @@ namespace wshttp
         class server;
     }
 
-    class endpoint final
+    class endpoint final : public std::enable_shared_from_this<endpoint>
     {
         friend class inbound_session;
-        friend class outbound_session;
+        friend class outbound_node;
         friend class session_base;
-        friend class node;
         friend class listener;
         friend class stream;
         friend class event_loop;
@@ -63,26 +61,24 @@ namespace wshttp
 
       private:
         std::shared_ptr<event_loop> _loop;
-
         std::shared_ptr<dns::server> _dns;
-
         std::shared_ptr<app_context> _ctx;
 
         const caller_id_t client_id;
         static caller_id_t next_client_id;
 
         // local listeners managing inbound https connections
-        std::unordered_map<uint16_t, std::shared_ptr<listener>> _listeners;
+        std::unordered_map<uint16_t, std::shared_ptr<listener>> _listeners{};
 
-        // local nodes managing outbound https connections
-        std::unordered_map<std::string, std::shared_ptr<node>> _nodes;
+        // sessions managing outbound https connections
+        std::unordered_map<domain_host, std::shared_ptr<outbound_node>> _outbounds{};
 
         std::atomic<bool> _close_immediately{false};
 
       public:
         bool listen(uint16_t port)
         {
-            return call_get([&]() {
+            return _loop->call_get([&]() {
                 auto [itr, b] = _listeners.try_emplace(port, nullptr);
 
                 if (not b)
@@ -106,13 +102,13 @@ namespace wshttp
                 if (not _uri)
                     throw std::invalid_argument{"Failed to parse input url: {}"_format(url)};
 
-                auto [itr, b] = _nodes.try_emplace(std::string{_uri.host()}, nullptr);
+                auto [itr, b] = _outbounds.try_emplace(_uri.host_url(), nullptr);
 
                 if (not b)
                     throw std::invalid_argument{
                             "Cannot create outbound node for input: {} -- node already exists!"_format(url)};
 
-                itr->second = make_shared<node>(*this, std::move(_uri), std::forward<Opt>(opts)...);
+                itr->second = make_shared<outbound_node>(*this, std::move(_uri), std::forward<Opt>(opts)...);
 
                 if (not itr->second)
                     throw std::runtime_error{"Node construction is fucked"};
@@ -123,31 +119,7 @@ namespace wshttp
 
         void test_parse_method(std::string url);
 
-        template <typename Callable>
-        void call(Callable&& f)
-        {
-            _loop->call(std::forward<Callable>(f));
-        }
-
-        template <typename Callable, typename Ret = decltype(std::declval<Callable>()())>
-        Ret call_get(Callable&& f)
-        {
-            return _loop->call_get(std::forward<Callable>(f));
-        }
-
-        void call_soon(std::function<void(void)> f) { _loop->call_soon(std::move(f)); }
-
-        template <typename Callable>
-        [[nodiscard]] std::shared_ptr<ev_watcher> call_every(std::chrono::microseconds interval, Callable&& f)
-        {
-            return _loop->_call_every(interval, std::forward<Callable>(f), client_id);
-        }
-
-        template <typename Callable>
-        void call_later(std::chrono::microseconds delay, Callable&& hook)
-        {
-            _loop->call_later(delay, std::forward<Callable>(hook));
-        }
+        const std::shared_ptr<event_loop>& loop() { return _loop; }
 
         void set_shutdown_immediate(bool b = true) { _close_immediately = b; }
 
@@ -164,6 +136,7 @@ namespace wshttp
             return _loop->template make_shared<T>(std::forward<Args>(args)...);
         }
 
+        void close_node(domain_host d);
         void close_listener(uint16_t p);
 
         bool in_event_loop() const { return _loop->in_event_loop(); }
