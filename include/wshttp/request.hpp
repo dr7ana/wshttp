@@ -1,17 +1,15 @@
 #pragma once
 
-#include "address.hpp"
 #include "listener.hpp"
-#include "ssl.hpp"
-#include "utils.hpp"
 
 namespace wshttp
 {
     using namespace wshttp::literals;
 
+    enum class METHOD : int { UNSUPPORTED = 0, GET = 1, POST = 2, HEAD = 3, PUT = 4, DELETE = 5 };
+
     namespace deleters
     {
-
         struct _bufferevent
         {
             inline void operator()(::bufferevent* b) const
@@ -26,16 +24,21 @@ namespace wshttp
 
     struct inbound_request
     {
-        inbound_request(listener& l, ip_address remote, evhttp_connection* c);
+        friend class listener;
+
+        explicit inbound_request(listener& l, ip_address remote, evutil_socket_t sock);
 
       private:
         listener& _l;
 
-        bufferevent_ptr _bev;
+        uri _uri;
+
+        path _path;
 
         evutil_socket_t _fd{-1};
 
-        path _path;
+      protected:
+        // int recv_initial(struct evhttp_request* req);
 
       public:
         //

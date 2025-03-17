@@ -33,7 +33,7 @@ option(BUILD_STATIC_DEPS "Build and link against static dependencies" OFF)
 option(WARNINGS_AS_ERRORS "Treat all warnings as errors. turn off for development, on for release" OFF)
 option(WSHTTP_BUILD_TESTS "Build wshttp test suite" ${WSHTTP_IS_TOPLEVEL_PROJECT})
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 

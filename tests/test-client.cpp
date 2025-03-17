@@ -29,7 +29,8 @@ int main(int argc, char* argv[])
     std::shared_ptr<wshttp::ssl_creds> creds;
 
     auto loop = wshttp::event_loop::make();
-    creds = wshttp::ssl_creds::make();
+    creds = (!key_path.empty() && !cert_path.empty()) ? wshttp::ssl_creds::make(key_path, cert_path)
+                                                      : wshttp::ssl_creds::make();
 
     std::shared_ptr<wshttp::endpoint> ep;
 
@@ -40,7 +41,7 @@ int main(int argc, char* argv[])
         ep->listen(5544);
         ep->listen(5545);
         ep->listen(5546);
-        ep->test_parse_method("https://www.google.com");
+        // ep->test_parse_method("https://www.google.com");
         // ep->connect("https://www.google.com");
     }
     catch (const std::exception& e)

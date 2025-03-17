@@ -3,6 +3,7 @@
 #include <bit>
 #include <concepts>
 #include <cstdint>
+#include <memory>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define BSWAP16 __builtin_bswap16
@@ -34,7 +35,7 @@ namespace wshttp::enc
                 sizeof(To) == sizeof(From) && std::is_trivially_copyable<To>::value &&
                 std::is_trivially_copyable<From>::value && std::is_trivially_constructible<To>::value &&
                 std::is_trivially_constructible<From>::value)
-    inline constexpr To bit_cast(const From& from)
+    [[nodiscard]] inline constexpr To bit_cast(const From& from) noexcept
     {
         To storage{};
         std::construct_at(std::launder(&storage), from);

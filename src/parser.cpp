@@ -84,7 +84,7 @@ namespace wshttp
 
     std::string_view url_parser::href_sv()
     {
-        return std::string_view{_res ? _url()->get_href() : ""};
+        return _res ? _url()->get_href() : ""sv;
     }
 
     url_result& url_parser::_url()

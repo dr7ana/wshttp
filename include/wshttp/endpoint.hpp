@@ -2,7 +2,6 @@
 
 #include "address.hpp"
 #include "dns.hpp"
-#include "format.hpp"
 #include "loop.hpp"
 #include "request.hpp"
 
@@ -22,7 +21,7 @@ namespace wshttp
     {
         friend class inbound_session;
         friend class outbound_node;
-        friend class session_base;
+        friend struct ws_session_base;
         friend class listener;
         friend class stream;
         friend class event_loop;

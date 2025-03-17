@@ -11,3 +11,4 @@
 #include "wshttp/ssl.hpp"
 #include "wshttp/types.hpp"
 #include "wshttp/utils.hpp"
+#include "wshttp/ws.hpp"

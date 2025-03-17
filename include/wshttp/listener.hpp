@@ -27,6 +27,7 @@ namespace wshttp
     class app_context;
     class endpoint;
     struct inbound_request;
+    struct ws_session_base;
 
     namespace deleters
     {
@@ -41,12 +42,13 @@ namespace wshttp
         };
     }  // namespace deleters
 
-    using tcp_listener = std::shared_ptr<evconnlistener>;
+    using tcp_listener = std::unique_ptr<evconnlistener, deleters::_evconnlistener>;
     using evhttp_ptr = std::unique_ptr<::evhttp, deleters::_evhttp>;
 
     class listener
     {
-        friend class inbound_session;
+        friend struct inbound_request;
+        friend struct ws_session_base;
         friend class endpoint;
         friend class event_loop;
         friend struct listen_callbacks;
@@ -63,16 +65,26 @@ namespace wshttp
         ip_address _local{};
         int _fd{-1};
 
-        // tcp_listener _tcp;
+        tcp_listener _tcp;
+
         evhttp_ptr _evh;
 
         // key: remote address, value: session ptr
-        std::unordered_map<ip_address, std::shared_ptr<inbound_request>> _sessions;
+        std::unordered_map<ip_address, std::shared_ptr<inbound_request>> _requests;
 
-        // void _init_internals();
+        // TODO: unify requests and ws sessions with base class to use the same map
+        std::unordered_map<ip_address, std::shared_ptr<ws_session_base>> _sessions;
+
+        void _init_internals();
 
       protected:
-        int accept_request(struct evhttp_request* req);
+        int recv_request(struct evhttp_request* req);
+
+        void process_request(struct evhttp_request* req);
+
+        int request_error(struct evhttp_request* req, int error, const char* reason);
+
+        void ws_request(struct evhttp_request* req);
 
         bufferevent* new_bev();
 
@@ -82,8 +94,8 @@ namespace wshttp
 
         void close_listener();
 
-        void close_session(ip_address remote);
+        void close_request_session(ip_address remote);
 
-        void create_session(ip_address remote, evutil_socket_t fd);
+        void close_ws_session(ip_address remote);
     };
 }  //  namespace wshttp

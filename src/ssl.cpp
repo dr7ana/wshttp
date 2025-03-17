@@ -116,11 +116,11 @@ namespace wshttp
                     return SSL_TLSEXT_ERR_OK;
                 }
                 else
-                    log->debug("Did not find match for client alpn: {}", input);
+                    log->trace("Did not find match for client alpn: {}", input);
             }
         }
 
-        log->info("Failed to select ALPN proto!");
+        log->warn("Failed to select ALPN proto!");
         return SSL_TLSEXT_ERR_NOACK;
     }
 
@@ -172,14 +172,25 @@ namespace wshttp
         log->info("Self-signed X509 certificate created!");
     }
 
+    cert_pk_file_pair::cert_pk_file_pair(const std::string_view& keyfile, const std::string_view& certfile) :
+            key{keyfile}, cert{certfile}
+    {
+        if (key.is_relative())
+            key = fs::absolute(key);
+        if (cert.is_relative())
+            cert = fs::absolute(cert);
+    }
+
+    ssl_creds::ssl_creds(const std::string_view& keyfile, const std::string_view& certfile) :
+            storage{cert_pk_file_pair{keyfile, certfile}}
+    {}
+
     void ssl_creds::configure_ssl_ctx(SSL_CTX* inbound, SSL_CTX* outbound)
     {
         if (storage.index())
         {
             // index != 0 -> variant holds generated x509_cert_keypair
-            auto& x509 = std::get<x509_cert_keypair>(storage);
-
-            auto [cert, pk] = x509.cert_keypair();
+            auto [cert, pk] = std::get<x509_cert_keypair>(storage).cert_keypair();
             assert(cert != nullptr && pk != nullptr);
 
             log->debug("Configuring inbound SSL context using generated self-signed X509...");
@@ -196,16 +207,18 @@ namespace wshttp
         {
             // index == 0 -> variant holds user-provided cert/key file paths
             assert(storage.index() == 0);
-            auto& [certfile, keyfile] = std::get<cert_pk_file_pair>(storage);
+            const auto& [certfile, keyfile] = std::get<cert_pk_file_pair>(storage).cert_keypair();
+
+            log->debug("keyfile:{} | certfile:{}", keyfile.c_str(), certfile.c_str());
 
             log->debug("Configuring inbound SSL context using user-provided key/cert...");
 
             check_rv(
-                    SSL_CTX_use_PrivateKey_file(inbound, keyfile.c_str(), SSL_FILETYPE_PEM),
-                    "Inbound SSL CTX read private key file");
-            check_rv(
                     SSL_CTX_use_certificate_chain_file(inbound, certfile.c_str()),
                     "Inbound SSL CTX read cert chain file");
+            check_rv(
+                    SSL_CTX_use_PrivateKey_file(inbound, keyfile.c_str(), SSL_FILETYPE_PEM),
+                    "Inbound SSL CTX read private key file");
             check_rv(SSL_CTX_check_private_key(inbound), "Inbound SSL CTX check private key");
 
             log->trace("Configuring outbound context using user-provided key/cert...");
@@ -241,8 +254,8 @@ namespace wshttp
 
         set_sslopts(ctx, false);
 
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
-        SSL_CTX_set_alpn_select_cb(ctx, ctx_callbacks::server_select_alpn_proto_cb, this);
+        // SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
+        // SSL_CTX_set_alpn_select_cb(ctx, ctx_callbacks::server_select_alpn_proto_cb, this);
     }
 
     void app_context::_init_outbound()

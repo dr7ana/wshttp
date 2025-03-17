@@ -1,6 +1,5 @@
 # wshttp
-websocket streaming capable http client
+websocket streaming capable http endpoint
 
 ## WIP:
-- Outbound DNS resolution via libevent
-- Websocket streaming
+- Client OB, websocket streaming (no libevent API exposed)

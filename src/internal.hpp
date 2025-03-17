@@ -2,6 +2,7 @@
 
 #include "encoding.hpp"
 #include "format.hpp"
+#include "request.hpp"
 
 extern "C" {
 #include <openssl/types.h>
@@ -54,6 +55,48 @@ namespace wshttp
 
         void setup_ssl_library();
 
+        inline ip_address get_connection_address(evhttp_connection* conn)
+        {
+            return ip_address{evhttp_connection_get_addr(conn)};
+        }
+
+        inline ip_address get_request_address(evhttp_request* req)
+        {
+            return get_connection_address(evhttp_request_get_connection(req));
+        }
+
+        inline evutil_socket_t get_request_fd(evhttp_request* req)
+        {
+            return bufferevent_getfd(evhttp_connection_get_bufferevent(evhttp_request_get_connection(req)));
+        }
+
+        inline constexpr auto get_method_string(METHOD m)
+        {
+            switch (m)
+            {
+                case METHOD::GET:
+                    return "GET"sv;
+                case METHOD::POST:
+                    return "POST"sv;
+                case METHOD::HEAD:
+                    return "HEAD"sv;
+                case METHOD::PUT:
+                    return "PUT"sv;
+                case METHOD::DELETE:
+                    return "DELETE"sv;
+                case METHOD::UNSUPPORTED:
+                default:
+                    return "UNSUPPORTED"sv;
+            }
+        }
+
+        inline METHOD get_request_method(evhttp_request* req)
+        {
+            static constexpr uint8_t BITMASK{0b00001111};
+            return METHOD{std::bit_width(
+                    static_cast<uint8_t>((std::to_underlying(evhttp_request_get_command(req)) & BITMASK)))};
+        }
+
     }  // namespace detail
 
     struct loop_callbacks
@@ -81,9 +124,6 @@ namespace wshttp
 
     struct listen_callbacks
     {
-        static void accept_cb(
-                struct evconnlistener* evconn, evutil_socket_t fd, struct sockaddr* addr, int addrlen, void* user_arg);
-
         static void gen_cb(struct evhttp_request* req, void* user_arg);
 
         static bufferevent* bev_cb(struct event_base* ev, void* user_arg);
@@ -92,58 +132,18 @@ namespace wshttp
 
         static void ws_cb(struct evhttp_request* req, void* user_arg);
 
-        static void error_cb(struct evconnlistener* evconn, void* user_arg);
+        static void close_cb(struct evhttp_connection* conn, void* user_arg);
+
+        static int error_cb(
+                struct evhttp_request* req, struct evbuffer* buffer, int error, const char* reason, void* user_arg);
     };
 
-    struct session_callbacks
+    struct ws_callbacks
     {
-        static void event_cb(struct bufferevent* bev, short events, void* user_arg);
+        static void msg_cb(
+                struct evws_connection* evws, int type, const unsigned char* data, size_t len, void* user_arg);
 
-        static void read_cb(struct bufferevent* bev, void* user_arg);
-
-        static void write_cb(struct bufferevent* bev, void* user_arg);
-    };
-
-    template <size_t N>
-    struct datum
-    {
-      private:
-        std::array<uint8_t, N> buf{};
-
-        datum(const uint8_t* data, size_t sz) { write(data, sz); }
-
-      public:
-        datum() = default;
-
-        template <enc::basic_char T>
-        datum(const_span<T> data) : datum{reinterpret_cast<const uint8_t*>(data.data()), data.size()}
-        {}
-
-        datum(const datum& other) : datum{other.buf.data(), other.buf.size()} {}
-
-        datum& operator=(const datum& other)
-        {
-            buf = other.buf;
-            return *this;
-        }
-
-        inline void write(const uint8_t* data, size_t sz)
-        {
-            if (sz != N)
-                throw std::invalid_argument{"Datum size must be {}"_format(N)};
-
-            std::memcpy(buf.data(), data, sz);
-        }
-
-        template <enc::basic_char T = uint8_t>
-        const_span<T> span() const
-        {
-            return {reinterpret_cast<const T*>(buf.data()), buf.size()};
-        }
-
-        explicit operator bool() const { return !buf.empty(); }
-
-        bool operator<=>(const datum& other) const { return buf <=> other.buf; }
+        static void close_cb(struct evws_connection* evws, void* user_arg);
     };
 
 }  // namespace wshttp

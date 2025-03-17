@@ -36,6 +36,11 @@ namespace wshttp
                     std::string{_hr}}
     {}
 
+    uri uri::populate(struct evhttp_request* r)
+    {
+        return parser->read(std::string{evhttp_request_get_uri(r)}) ? parser->extract() : uri{};
+    }
+
     uri uri::parse(const char* c, size_t s)
     {
         return parser->read(std::string{c, s}) ? parser->extract() : uri{};
@@ -46,15 +51,17 @@ namespace wshttp
         return domain_host{host()};
     }
 
-    void uri::print_contents() const
+    std::string uri::to_string() const
     {
-        log->info("scheme:{}", _fields[_scheme]);
-        log->info("userinfo:{}", _fields[_userinfo]);
-        log->info("host:{}", _fields[_host]);
-        log->info("port:{}", _fields[_port]);
-        log->info("pathname:{}", _fields[_pathname]);
-        log->info("query:{}", _fields[_query]);
-        log->info("fragment:{}", _fields[_fragment]);
+        auto msg = "\n"s;
+        msg += "\tscheme:{}\n"_format(_fields[_scheme]);
+        msg += "\tuserinfo:{}\n"_format(_fields[_userinfo]);
+        msg += "\thost:{}\n"_format(_fields[_host]);
+        msg += "\tport:{}\n"_format(_fields[_port]);
+        msg += "\tpathname:{}\n"_format(_fields[_pathname]);
+        msg += "\tquery:{}\n"_format(_fields[_query]);
+        msg += "\tfragment:{}\n"_format(_fields[_fragment]);
+        return msg;
     }
 
     ipv4::ipv4(const std::string& str)
@@ -91,11 +98,6 @@ namespace wshttp
             enc::big_to_host_inplace(addr[i]);
     }
 
-    bool ipv6::is_anyaddr() const
-    {
-        return *this == ipv6_anyaddr;
-    }
-
     in6_addr ipv6::to_in6addr() const
     {
         in6_addr ret{};
@@ -121,22 +123,16 @@ namespace wshttp
         return "{}"_format(buf);
     }
 
-    ip_address::ip_address(const struct sockaddr* in)
+    ip_address ip_address::from_socket(int fd)
     {
-        if (in->sa_family == AF_INET)
-        {
-            auto* in4 = reinterpret_cast<const sockaddr_in*>(in);
-            _ip = ipv4{in4};
-            _port = enc::big_to_host(in4->sin_port);
-        }
-        else if (in->sa_family == AF_INET6)
-        {
-            auto* in6 = reinterpret_cast<const sockaddr_in6*>(in);
-            _ip = ipv6{in6};
-            _port = enc::big_to_host(in6->sin6_port);
-        }
-        else
-            throw std::runtime_error{"Failed to understand incoming address sa_family"};
+        sockaddr bind{};
+        socklen_t len = sizeof(bind);
+
+        if (getsockname(fd, &bind, &len) < 0)
+            throw std::runtime_error{
+                    "Failed to get local socket address for socket on fd {}: {}"_format(fd, detail::current_error())};
+
+        return ip_address{&bind};
     }
 
     bool ip_address::is_anyaddr() const

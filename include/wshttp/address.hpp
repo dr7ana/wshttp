@@ -1,6 +1,7 @@
 #pragma once
 
 #include "encoding.hpp"
+#include "format.hpp"
 #include "types.hpp"
 
 #include <variant>
@@ -38,6 +39,8 @@ namespace wshttp
       public:
         std::array<std::string, URI_FIELDS> _fields{};
 
+        static uri populate(struct evhttp_request* r);
+
         template <const_span_convertible T>
         static uri parse(T u)
         {
@@ -57,7 +60,8 @@ namespace wshttp
 
         domain_host host_url() const;
 
-        void print_contents() const;
+        std::string to_string() const;
+        static constexpr bool to_string_formattable = true;
 
         bool empty() const { return _fields.empty(); }
 
@@ -149,7 +153,7 @@ namespace wshttp
 
         in6_addr to_in6addr() const;
 
-        bool is_anyaddr() const;
+        constexpr bool is_anyaddr() const;
 
         constexpr auto operator<=>(const ipv6& a) const { return addr <=> a.addr; }
 
@@ -163,6 +167,11 @@ namespace wshttp
 
     inline constexpr ipv6 ipv6_anyaddr(0, 0, 0, 0, 0, 0, 0, 0);
 
+    constexpr bool ipv6::is_anyaddr() const
+    {
+        return *this == ipv6_anyaddr;
+    }
+
     template <typename ip_t>
     concept ip_type = std::same_as<ip_t, ipv4> || std::same_as<ip_t, ipv6>;
 
@@ -170,12 +179,30 @@ namespace wshttp
 
     struct ip_address
     {
-        constexpr ip_address(uint16_t p = 0) : _ip{}, _port{p} {}
+        constexpr ip_address(uint16_t p = 0) : _ip{ipv4_anyaddr}, _port{p}, _is_v4{true} {}
 
-        explicit ip_address(const struct sockaddr* in);
+        explicit ip_address(const struct sockaddr* in)
+        {
+            if (in->sa_family == AF_INET)
+            {
+                auto* in4 = reinterpret_cast<const sockaddr_in*>(in);
+                _ip = ipv4{in4};
+                _port = enc::big_to_host(in4->sin_port);
+                _is_v4 = true;
+            }
+            else if (in->sa_family == AF_INET6)
+            {
+                auto* in6 = reinterpret_cast<const sockaddr_in6*>(in);
+                _ip = ipv6{in6};
+                _port = enc::big_to_host(in6->sin6_port);
+                _is_v4 = false;
+            }
+            else
+                throw std::runtime_error{"Failed to understand incoming address sa_family: {}"_format(in->sa_family)};
+        }
 
         template <ip_type T>
-        constexpr explicit ip_address(T v4, uint16_t p) : _ip{v4}, _port{p}
+        constexpr explicit ip_address(T ip, uint16_t p) : _ip{ip}, _port{p}, _is_v4{!_ip.index()}
         {}
 
         ip_address(const ip_address& a) { _copy_internals(a); }
@@ -186,11 +213,14 @@ namespace wshttp
             _copy_internals(a);
             return *this;
         }
+
         ip_address& operator=(const ip_address& a)
         {
             _copy_internals(a);
             return *this;
         }
+
+        static ip_address from_socket(int fd);
 
       private:
         ip_v _ip;        // host order
@@ -202,7 +232,7 @@ namespace wshttp
         ipv6& _ipv6() { return std::get<ipv6>(_ip); }
         const ipv6& _ipv6() const { return std::get<ipv6>(_ip); }
 
-        bool _is_v4{!_ip.index()};
+        bool _is_v4{true};
 
         void _copy_internals(const ip_address& a)
         {
@@ -277,7 +307,7 @@ namespace std
         {
             size_t h{};
             for (const auto& v : v6.addr)
-                h ^= hash<uint16_t>{}(v) + wshttp::inverse_golden_ratio + (h << 7) + (h >> 3);
+                h ^= hash<uint16_t>{}(v) + wshttp::inverse_golden_ratio + (h << 6) + (h >> 2);
             return h;
         }
     };
@@ -287,8 +317,15 @@ namespace std
     {
         size_t operator()(const wshttp::ip_address& ip) const noexcept
         {
-            using ip_t = decltype(ip._ip);
-            return hash<ip_t>{}(ip._ip);
+            size_t h{};
+
+            if (auto maybe_v4 = std::get_if<wshttp::ipv4>(&ip._ip))
+                h = hash<wshttp::ipv4>{}(*maybe_v4);
+            else
+                h = hash<wshttp::ipv6>{}(std::get<wshttp::ipv6>(ip._ip));
+
+            h ^= hash<decltype(ip._port)>{}(ip._port) + wshttp::inverse_golden_ratio + (h << 7) + (h >> 3);
+            return h;
         }
     };
 

@@ -15,20 +15,7 @@ namespace wshttp
             template <enc::basic_char T = char, size_t N = std::dynamic_extent>
             using const_span = std::span<const T, N>;
         }
-
-        inline namespace unique_ptr
-        {
-            template <class T, class deleter>
-            class custom_unique_ptr : std::unique_ptr<T, deleter>
-            {
-                using std::unique_ptr<T, deleter>::unique_ptr;
-
-                operator const T*() const { return this->get(); }
-
-                operator T*() { return this->get(); }
-            };
-        }  // namespace unique_ptr
-    }      // namespace types
+    }  // namespace types
 
     using cspan = const_span<char>;
     using uspan = const_span<unsigned char>;

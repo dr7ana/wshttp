@@ -55,7 +55,7 @@ namespace wshttp
     {
         friend struct ssl_creds;
 
-      private:
+      protected:
         evp_pkey_ptr pk;
         x509_ptr x;
 
@@ -67,8 +67,24 @@ namespace wshttp
         x509_cert_keypair();
     };
 
+    struct cert_pk_file_pair
+    {
+        friend struct ssl_creds;
+
+      protected:
+        fs::path key;
+        fs::path cert;
+
+        std::pair<fs::path, fs::path> cert_keypair() { return {cert, key}; }
+
+      public:
+        cert_pk_file_pair() = delete;
+
+        explicit cert_pk_file_pair(const std::string_view& keyfile, const std::string_view& certfile);
+    };
+
     // first: certfile, second: keyfile
-    using cert_pk_file_pair = std::pair<fs::path, fs::path>;
+    // using cert_pk_file_pair = std::pair<fs::path, fs::path>;
     using ssl_cert_store_v = std::variant<cert_pk_file_pair, x509_cert_keypair>;
 
     struct ssl_creds
@@ -79,9 +95,7 @@ namespace wshttp
         ssl_cert_store_v storage;
         const size_t variant_index{storage.index()};
 
-        explicit ssl_creds(const std::string_view& keyfile, const std::string_view& certfile) :
-                storage{cert_pk_file_pair{keyfile, certfile}}
-        {}
+        explicit ssl_creds(const std::string_view& keyfile, const std::string_view& certfile);
 
         ssl_creds() : storage{x509_cert_keypair{}} {}
 
