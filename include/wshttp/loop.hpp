@@ -16,10 +16,6 @@ extern "C" {
 
 namespace wshttp
 {
-    using Job = std::function<void()>;
-    using loop_ptr = std::shared_ptr<::event_base>;
-    using caller_id_t = uint16_t;
-
     class event_loop;
 
     namespace deleters
@@ -30,7 +26,10 @@ namespace wshttp
         };
     }  // namespace deleters
 
+    using Job = std::function<void()>;
+    using loop_ptr = std::shared_ptr<::event_base>;
     using event_ptr = std::unique_ptr<::event, deleters::_event>;
+    using caller_id_t = uint16_t;
 
     struct ev_watcher
     {

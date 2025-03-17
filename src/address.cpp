@@ -121,17 +121,17 @@ namespace wshttp
         return "{}"_format(buf);
     }
 
-    ip_address::ip_address(struct sockaddr* in)
+    ip_address::ip_address(const struct sockaddr* in)
     {
         if (in->sa_family == AF_INET)
         {
-            auto* in4 = reinterpret_cast<sockaddr_in*>(in);
+            auto* in4 = reinterpret_cast<const sockaddr_in*>(in);
             _ip = ipv4{in4};
             _port = enc::big_to_host(in4->sin_port);
         }
         else if (in->sa_family == AF_INET6)
         {
-            auto* in6 = reinterpret_cast<sockaddr_in6*>(in);
+            auto* in6 = reinterpret_cast<const sockaddr_in6*>(in);
             _ip = ipv6{in6};
             _port = enc::big_to_host(in6->sin6_port);
         }

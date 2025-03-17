@@ -5,10 +5,10 @@ extern "C" {
 #include <event2/bufferevent.h>
 #include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent_struct.h>
+#include <event2/http.h>
 
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
-#include <nghttp2/nghttp2.h>
 }
 
 #include <array>

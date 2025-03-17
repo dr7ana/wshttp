@@ -66,20 +66,22 @@ IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: '".+\.h'
     Priority: 2
-  - Regex: '^<(event2|ngtcp2)'
+  - Regex: '^<wshttp'
     Priority: 3
-  - Regex: '<winsock2\.h>'
+  - Regex: '^<(event2|ngtcp2)'
     Priority: 4
-  - Regex: '<windows\.h>'
+  - Regex: '<winsock2\.h>'
     Priority: 5
-  - Regex: '^<CLI'
+  - Regex: '<windows\.h>'
     Priority: 6
-  - Regex: '^<catch2'
+  - Regex: '^<CLI'
     Priority: 7
-  - Regex: '^<.*\.h(pp)?>$'
+  - Regex: '^<catch2'
     Priority: 8
-  - Regex: '(<)(.)+(>)'
+  - Regex: '^<.*\.h(pp)?>$'
     Priority: 9
+  - Regex: '(<)(.)+(>)'
+    Priority: 10
 
 # spacing
 SpaceBeforeParens: ControlStatements

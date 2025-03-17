@@ -1,9 +1,3 @@
-[submodule "external/nghttp2"]
-	path = external/nghttp2
-	url = https://github.com/nghttp2/nghttp2.git
-[submodule "external/wslay"]
-	path = external/wslay
-	url = https://github.com/tatsuhiro-t/wslay.git
 [submodule "external/spdlog"]
 	path = external/spdlog
 	url = https://github.com/gabime/spdlog.git

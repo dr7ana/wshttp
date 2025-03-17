@@ -12,7 +12,6 @@ extern "C" {
 namespace wshttp
 {
     using namespace wshttp::literals;
-    class stream;
 
     using url_result = ada::result<ada::url_aggregator>;
 
@@ -54,6 +53,7 @@ namespace wshttp
         const char* current_error();
 
         void setup_ssl_library();
+
     }  // namespace detail
 
     struct loop_callbacks
@@ -84,6 +84,14 @@ namespace wshttp
         static void accept_cb(
                 struct evconnlistener* evconn, evutil_socket_t fd, struct sockaddr* addr, int addrlen, void* user_arg);
 
+        static void gen_cb(struct evhttp_request* req, void* user_arg);
+
+        static bufferevent* bev_cb(struct event_base* ev, void* user_arg);
+
+        static int newreq_cb(struct evhttp_request* req, void* user_arg);
+
+        static void ws_cb(struct evhttp_request* req, void* user_arg);
+
         static void error_cb(struct evconnlistener* evconn, void* user_arg);
     };
 
@@ -94,48 +102,6 @@ namespace wshttp
         static void read_cb(struct bufferevent* bev, void* user_arg);
 
         static void write_cb(struct bufferevent* bev, void* user_arg);
-
-        static nghttp2_ssize send_callback(
-                nghttp2_session* session, const uint8_t* data, size_t length, int flags, void* user_arg);
-
-        // static int on_frame_send_callback(nghttp2_session* session, const nghttp2_frame* frame, void* user_arg);
-
-        // static int on_data_chunk_recv_callback(
-        //         nghttp2_session* session,
-        //         uint8_t flags,
-        //         int32_t stream_id,
-        //         const uint8_t* data,
-        //         size_t len,
-        //         void* user_arg);
-
-        static int on_frame_recv_callback(nghttp2_session* session, const nghttp2_frame* frame, void* user_arg);
-
-        static int on_stream_close_callback(
-                nghttp2_session* session, int32_t stream_id, uint32_t error_code, void* user_arg);
-
-        static int on_header_callback(
-                nghttp2_session* session,
-                const nghttp2_frame* frame,
-                const uint8_t* name,
-                size_t namelen,
-                const uint8_t* value,
-                size_t valuelen,
-                uint8_t flags,
-                void* user_arg);
-
-        static int on_begin_headers_callback(nghttp2_session* session, const nghttp2_frame* frame, void* user_arg);
-    };
-
-    struct stream_callbacks
-    {
-        static ssize_t file_read_callback(
-                nghttp2_session* session,
-                int32_t stream_id,
-                uint8_t* buf,
-                size_t length,
-                uint32_t* data_flags,
-                nghttp2_data_source* source,
-                void* user_arg);
     };
 
     template <size_t N>

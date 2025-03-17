@@ -172,7 +172,7 @@ namespace wshttp
     {
         constexpr ip_address(uint16_t p = 0) : _ip{}, _port{p} {}
 
-        explicit ip_address(struct sockaddr* in);
+        explicit ip_address(const struct sockaddr* in);
 
         template <ip_type T>
         constexpr explicit ip_address(T v4, uint16_t p) : _ip{v4}, _port{p}

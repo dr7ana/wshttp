@@ -40,15 +40,6 @@ namespace wshttp
         });
     }
 
-    void endpoint::close_node(domain_host d)
-    {
-        assert(in_event_loop());
-        if (_outbounds.erase(d))
-            log->info("Endpoint closed outbound node to domain host: {}", d);
-        else
-            log->warn("Endpoint failed to find outbound node (domain host: {}) to close!", d);
-    }
-
     void endpoint::close_listener(uint16_t p)
     {
         assert(in_event_loop());
@@ -83,6 +74,17 @@ namespace wshttp
     SSL_CTX* endpoint::outbound_ctx()
     {
         return _ctx->O();
+    }
+
+    struct evhttp* endpoint::make_evhttp()
+    {
+        evhttp* e = evhttp_new(_loop->ev_loop.get());
+
+        if (!e)
+            throw std::runtime_error{"Failed to create evhttp event base!"};
+
+        log->trace("Created evhttp event base...");
+        return e;
     }
 
     void endpoint::handle_ep_opt(std::shared_ptr<ssl_creds> c)

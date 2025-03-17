@@ -1,6 +1,7 @@
 #pragma once
 
 #include "address.hpp"
+#include "loop.hpp"
 #include "ssl.hpp"
 
 extern "C" {
@@ -19,13 +20,13 @@ namespace wshttp
       public:
         local_node(ip_address l) : _local{std::move(l)} {}
 
-        virtual SSL* new_ssl() = 0;
+        virtual bufferevent* new_nev() = 0;
         virtual void close() = 0;
     };
 
     class app_context;
     class endpoint;
-    class inbound_session;
+    struct inbound_request;
 
     namespace deleters
     {
@@ -33,9 +34,15 @@ namespace wshttp
         {
             inline void operator()(::evconnlistener* e) const { ::evconnlistener_free(e); }
         };
+
+        struct _evhttp
+        {
+            inline void operator()(::evhttp* e) const { return evhttp_free(e); }
+        };
     }  // namespace deleters
 
     using tcp_listener = std::shared_ptr<evconnlistener>;
+    using evhttp_ptr = std::unique_ptr<::evhttp, deleters::_evhttp>;
 
     class listener
     {
@@ -44,7 +51,7 @@ namespace wshttp
         friend class event_loop;
         friend struct listen_callbacks;
 
-        explicit listener(endpoint& e, uint16_t p) : _ep{e}, _local{p} { _init_internals(); }
+        explicit listener(endpoint& e, uint16_t p);
 
       public:
         listener() = delete;
@@ -56,14 +63,19 @@ namespace wshttp
         ip_address _local{};
         int _fd{-1};
 
-        tcp_listener _tcp;
+        // tcp_listener _tcp;
+        evhttp_ptr _evh;
 
         // key: remote address, value: session ptr
-        std::unordered_map<ip_address, std::shared_ptr<inbound_session>> _sessions;
+        std::unordered_map<ip_address, std::shared_ptr<inbound_request>> _sessions;
 
-        void _init_internals();
+        // void _init_internals();
 
       protected:
+        int accept_request(struct evhttp_request* req);
+
+        bufferevent* new_bev();
+
         SSL* new_ssl();
 
         void close_all();

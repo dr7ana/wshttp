@@ -4,28 +4,10 @@ find_package(Git)
 if(GIT_FOUND)
     message(STATUS "Checking submodules")
     include(check_submodule)
+    check_submodule(ada)
     check_submodule(libevent)
-    check_submodule(nghttp2)
     check_submodule(spdlog)
-    check_submodule(wslay)
 endif()
-
-# nghttp2
-set(WITH_NEVERBLEED OFF CACHE BOOL "" FORCE)
-set(WITH_MRUBY OFF CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
-set(ENABLE_DOC OFF CACHE BOOL "" FORCE)
-set(ENABLE_HTTP3 OFF CACHE BOOL "" FORCE)
-set(ENABLE_LIB_ONLY ON CACHE BOOL "" FORCE) # toggles off ENABLE_APP and ENABLE_EXAMPLES
-add_subdirectory(nghttp2 EXCLUDE_FROM_ALL)
-
-# wslay
-set(WSLAY_CONFIGURE_INSTALL OFF CACHE BOOL "" FORCE)
-set(WSLAY_STATIC ON CACHE BOOL "" FORCE)
-set(WSLAY_SHARED OFF CACHE BOOL "" FORCE)
-add_subdirectory(wslay EXCLUDE_FROM_ALL)
-add_library(wslay::wslay ALIAS wslay)
 
 # spdlog
 set(SPDLOG_FMT_EXTERNAL_HO ON CACHE BOOL "" FORCE)

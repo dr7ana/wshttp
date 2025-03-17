@@ -121,12 +121,6 @@ namespace wshttp
         }
     }  // namespace literals
 
-    namespace req
-    {
-        enum class FIELD { method, scheme, authority, path, status };
-        enum class CODE { _200, _404 };
-    }  // namespace req
-
     namespace defaults
     {
         using namespace wshttp::literals;

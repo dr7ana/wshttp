@@ -13,9 +13,7 @@ add_library(
     loop.cpp
     parser.cpp
     request.cpp
-    session.cpp
     ssl.cpp
-    stream.cpp
     types.cpp
     utils.cpp
 )
@@ -24,8 +22,6 @@ target_link_libraries(
     wshttp
     
     PUBLIC
-    nghttp2::nghttp2
-    wslay::wslay
     libevent::core
     libevent::extra
     libevent::ssl

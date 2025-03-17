@@ -1,15 +1,17 @@
 #pragma once
 
+#include "address.hpp"
 #include "dns.hpp"
 #include "format.hpp"
 #include "loop.hpp"
-#include "session.hpp"
+#include "request.hpp"
 
 namespace wshttp
 {
     using namespace wshttp::literals;
 
     struct ssl_creds;
+    class listener;
 
     namespace dns
     {
@@ -71,7 +73,7 @@ namespace wshttp
         std::unordered_map<uint16_t, std::shared_ptr<listener>> _listeners{};
 
         // sessions managing outbound https connections
-        std::unordered_map<domain_host, std::shared_ptr<outbound_node>> _outbounds{};
+        // std::unordered_map<domain_host, std::shared_ptr<outbound_node>> _outbounds{};
 
         std::atomic<bool> _close_immediately{false};
 
@@ -94,34 +96,36 @@ namespace wshttp
             });
         }
 
-        template <typename... Opt>
-        bool connect(std::string_view url, Opt&&... opts)
-        {
-            return call_get([&]() {
-                auto _uri = uri::parse(url);
-                if (not _uri)
-                    throw std::invalid_argument{"Failed to parse input url: {}"_format(url)};
+        // template <typename... Opt>
+        // bool connect(std::string_view url, Opt&&... opts)
+        // {
+        //     return call_get([&]() {
+        //         auto _uri = uri::parse(url);
+        //         if (not _uri)
+        //             throw std::invalid_argument{"Failed to parse input url: {}"_format(url)};
 
-                auto [itr, b] = _outbounds.try_emplace(_uri.host_url(), nullptr);
+        //         auto [itr, b] = _outbounds.try_emplace(_uri.host_url(), nullptr);
 
-                if (not b)
-                    throw std::invalid_argument{
-                            "Cannot create outbound node for input: {} -- node already exists!"_format(url)};
+        //         if (not b)
+        //             throw std::invalid_argument{
+        //                     "Cannot create outbound node for input: {} -- node already exists!"_format(url)};
 
-                itr->second = make_shared<outbound_node>(*this, std::move(_uri), std::forward<Opt>(opts)...);
+        //         itr->second = make_shared<outbound_node>(*this, std::move(_uri), std::forward<Opt>(opts)...);
 
-                if (not itr->second)
-                    throw std::runtime_error{"Node construction is fucked"};
+        //         if (not itr->second)
+        //             throw std::runtime_error{"Node construction is fucked"};
 
-                return true;
-            });
-        }
+        //         return true;
+        //     });
+        // }
 
         void test_parse_method(std::string url);
 
         const std::shared_ptr<event_loop>& loop() { return _loop; }
 
         void set_shutdown_immediate(bool b = true) { _close_immediately = b; }
+
+        bool in_event_loop() const { return _loop->in_event_loop(); }
 
       protected:
         template <typename T, typename Callable>
@@ -136,16 +140,17 @@ namespace wshttp
             return _loop->template make_shared<T>(std::forward<Args>(args)...);
         }
 
-        void close_node(domain_host d);
         void close_listener(uint16_t p);
-
-        bool in_event_loop() const { return _loop->in_event_loop(); }
 
         void shutdown_endpoint();
 
         SSL_CTX* inbound_ctx();
 
         SSL_CTX* outbound_ctx();
+
+        struct event_base* ev_base() { return loop()->loop().get(); }
+
+        struct evhttp* make_evhttp();
 
       private:
         void handle_ep_opt(std::shared_ptr<ssl_creds> c);
