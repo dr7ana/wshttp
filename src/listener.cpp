@@ -150,7 +150,9 @@ namespace wshttp
         switch (method)
         {
             case METHOD::UNSUPPORTED:
-                log->warn("Received unsupported HTTP request (code:{})", evhttp_request_get_command(req));
+                log->warn(
+                        "Received unsupported HTTP request (code:{})",
+                        std::to_underlying(evhttp_request_get_command(req)));
                 return evhttp_send_error(req, HTTP_BADMETHOD, nullptr);
             case METHOD::GET:
             case METHOD::POST:

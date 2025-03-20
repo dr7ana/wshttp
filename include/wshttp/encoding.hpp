@@ -90,8 +90,10 @@ namespace wshttp::enc
         val = bit_cast<T>(detail::byteswap_fallback(bit_cast<std::make_unsigned_t<T>>(val)));
 #else
 #ifndef BUILTIN_BYTESWAP_IS_CONSTEXPR
-        if (std::is_constant_evaluated())
+        if consteval
+        {
             val = bit_cast<T>(detail::byteswap_fallback(bit_cast<std::make_unsigned_t<T>>(val)));
+        }
 #endif
         if constexpr (sizeof(T) == 2)
             val = bit_cast<T>(BSWAP16(bit_cast<uint16_t>(val)));

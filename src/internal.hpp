@@ -1,7 +1,7 @@
 #pragma once
 
 #include "encoding.hpp"
-#include "format.hpp"
+// #include "format.hpp"
 #include "request.hpp"
 
 extern "C" {

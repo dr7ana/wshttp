@@ -162,37 +162,37 @@ namespace wshttp
 
     struct buffer_printer
     {
-        std::basic_string_view<std::byte> buf;
+      private:
+        bspan buf;
 
-        template <typename T>
-            requires const_span_convertible<T> || string_view_convertible<T>
-        explicit buffer_printer(T buf) : buffer_printer{buf.data(), buf.size()}
+      public:
+        template <enc::basic_char T>
+        explicit buffer_printer(const T* data, size_t datalen) : buf{reinterpret_cast<const std::byte*>(data), datalen}
         {}
 
         // Constructed from any type of string_view<T> for a single-byte T (char, std::byte,
         // uint8_t, etc.)
         template <enc::basic_char T>
-        explicit buffer_printer(std::basic_string_view<T> buf) :
-                buf{reinterpret_cast<const std::byte*>(buf.data()), buf.size()}
+        explicit buffer_printer(std::basic_string_view<T> data) : buffer_printer{data.data(), data.size()}
         {}
 
         // Constructed from any type of lvalue string<T> for a single-byte T (char, std::byte,
-        // uint8_t, etc.
+        // uint8_t, etc.)
         template <enc::basic_char T>
-        explicit buffer_printer(const std::basic_string<T>& buf) : buffer_printer(std::basic_string_view<T>{buf})
+        explicit buffer_printer(const std::basic_string<T>& data) : buffer_printer{data.data(), data.size()}
         {}
 
-        // *Not* constructable from a string<T> rvalue (no taking ownership)
+        // *Not* constructable from a string<T> rvalue (because we only hold a view and do not take
+        // ownership).
         template <enc::basic_char T>
         explicit buffer_printer(std::basic_string<T>&& buf) = delete;
 
-        // Constructable from a (T*, size) argument pair, for byte-sized T's.
-        template <enc::basic_char T>
-        explicit buffer_printer(const T* data, size_t size) : buffer_printer(std::basic_string_view<T>{data, size})
+        // Constructed from any type of span
+        template <const_span_type T>
+        explicit buffer_printer(const T& data) : buffer_printer{data.data(), data.size()}
         {}
 
         std::string to_string() const;
-
         static constexpr bool to_string_formattable = true;
     };
 
