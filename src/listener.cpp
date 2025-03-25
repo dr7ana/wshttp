@@ -254,7 +254,10 @@ namespace wshttp
         log->trace("{} called", __PRETTY_FUNCTION__);
 
         if (_requests.erase(remote))
+        {
             log->info("Listener closed session to remote: {}", remote);
+            _ep._completed_inbounds += 1;
+        }
         else
             log->warn("Listener failed to find session (remote: {}) to close!", remote);
     }
@@ -263,8 +266,11 @@ namespace wshttp
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        if (_requests.erase(remote))
+        if (_sessions.erase(remote))
+        {
             log->info("Listener closed session to remote: {}", remote);
+            _ep._completed_inbounds += 1;
+        }
         else
             log->warn("Listener failed to find session (remote: {}) to close!", remote);
     }

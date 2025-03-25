@@ -46,13 +46,11 @@ namespace wshttp
 
     uri uri::populate(struct evhttp_request* r)
     {
-        return parser->read(std::string{evhttp_request_get_uri(r)}) ? parser->extract() : uri{};
+        (void)r;
+
+        // return parser->read(std::string{evhttp_request_get_uri(r)}) ? parser->extract() : uri{};
+        return {};
     }
-
-    // uri uri::populate(struct evhttp_uri* r)
-    // {
-
-    // }
 
     uri uri::parse(const char* c, size_t s)
     {
@@ -76,15 +74,7 @@ namespace wshttp
 
     std::string uri::to_string() const
     {
-        auto msg = "\n"s;
-        msg += "\tscheme:{}\n"_format(_fields[_scheme]);
-        msg += "\tuserinfo:{}\n"_format(_fields[_userinfo]);
-        msg += "\thost:{}\n"_format(_fields[_host]);
-        msg += "\tport:{}\n"_format(_fields[_port]);
-        msg += "\tpathname:{}\n"_format(_fields[_pathname]);
-        msg += "\tquery:{}\n"_format(_fields[_query]);
-        msg += "\tfragment:{}\n"_format(_fields[_fragment]);
-        return msg;
+        return _fields[_href];
     }
 
     ipv4::ipv4(const std::string& str)

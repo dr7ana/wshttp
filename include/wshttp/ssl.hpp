@@ -71,20 +71,21 @@ namespace wshttp
     {
         friend struct ssl_creds;
 
+        cert_pk_file_pair() = delete;
+
       protected:
+        explicit cert_pk_file_pair(const std::string_view& keyfile, const std::string_view& certfile);
+
         fs::path key;
         fs::path cert;
 
         std::pair<fs::path, fs::path> cert_keypair() { return {cert, key}; }
 
       public:
-        cert_pk_file_pair() = delete;
-
-        explicit cert_pk_file_pair(const std::string_view& keyfile, const std::string_view& certfile);
+        //
     };
 
     // first: certfile, second: keyfile
-    // using cert_pk_file_pair = std::pair<fs::path, fs::path>;
     using ssl_cert_store_v = std::variant<cert_pk_file_pair, x509_cert_keypair>;
 
     struct ssl_creds

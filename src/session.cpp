@@ -67,7 +67,6 @@ namespace wshttp
             case METHOD::PUT:
             case METHOD::DELETE:
                 log->info("Received {} HTTP request from {}", detail::get_method_string(method), _path.remote());
-                log->debug("Request target: {}", uri::populate(req));
                 break;
         }
 
@@ -112,7 +111,7 @@ namespace wshttp
         log->trace("{} called", __PRETTY_FUNCTION__);
     }
 
-    void outbound_session::make_request()
+    void outbound_session::make_request(METHOD method)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
@@ -134,7 +133,9 @@ namespace wshttp
         check_rv(evhttp_add_header(buffer, hdr::host, _uri.host_cstr()), "add host hdr", 0);
         check_rv(evhttp_add_header(buffer, hdr::conn, hdr::close), "add conn close hdr", 0);
 
-        if (evhttp_make_request(_evconn.get(), req, EVHTTP_REQ_GET, _uri.path_cstr()) != 0)
+        auto evmethod = detail::get_method_cmd_type(method);
+
+        if (evhttp_make_request(_evconn.get(), req, evmethod, _uri.path_cstr()) != 0)
         {
             log->warn("Failed to dispatch evhttp_request!");
             return close();
@@ -166,7 +167,7 @@ namespace wshttp
         evbuffer_drain(evbuffer, nread);
 
         log->info(
-                "Request (remote:{}) received repsonse:[ payload:{}B | code:{} | line: {} ]",
+                "Request (remote:{}) received response:[ payload:{}B | code:{} | line: {} ]",
                 _uri.host(),
                 nread,
                 code,

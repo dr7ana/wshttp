@@ -41,17 +41,47 @@ namespace wshttp
         });
     }
 
+    bool endpoint::_request(std::string_view uri, METHOD method)
+    {
+        return _loop->call_get([&]() {
+            auto _uri = uri::parse(uri);
+            if (not _uri)
+                throw std::invalid_argument{"Failed to parse input url: {}"_format(uri)};
+
+            auto host = _uri.host_url();
+
+            auto& outbound_set = _outbounds[host];
+
+            if (outbound_set.contains(_uri))
+            {
+                log->warn("Outbound session already exists for uri: {}!", _uri);
+                return false;
+            }
+
+            auto [itr, b] = outbound_set.emplace(make_shared<outbound_session>(*this, std::move(_uri)));
+
+            if (not b)
+                throw std::invalid_argument{"Outbound session already exists for uri: {}!"_format(uri)};
+
+            (*itr)->make_request(method);
+
+            return true;
+        });
+    }
+
     void endpoint::_print_stats()
     {
         auto n_listeners = _listeners.size();
         auto n_remotes = _outbounds.size();
-        auto n_complete = _completed_outbounds.load();
+        auto n_inbounds = _completed_inbounds.load();
+        auto n_outbounds = _completed_outbounds.load();
 
         log->info(
-                "Endpoint:[ listeners:{} | remote domains:{} | completed requests:{} ]",
+                "Endpoint:[ listeners:{} | remote domains:{} | completed:[ inbound:{} | outbound:{} ] ]",
                 n_listeners,
                 n_remotes,
-                n_complete);
+                n_inbounds,
+                n_outbounds);
     }
 
     endpoint::~endpoint()
@@ -107,7 +137,9 @@ namespace wshttp
     {
         assert(in_event_loop());
         if (_listeners.erase(b))
+        {
             log->info("Endpoint closed listener on bind: {}", b);
+        }
         else
             log->warn("Endpoint failed to find listener (bind: {}) to close!", b);
     }
@@ -123,7 +155,7 @@ namespace wshttp
                 ita->second.erase(itb);
                 ++_completed_outbounds;
 
-                log->info("Endpoint closed outbound request to remote domain host: {}", u.host());
+                log->info("Endpoint closed outbound request to remote domain (host: {}): {}", u.host(), u);
 
                 if (ita->second.empty())
                 {
@@ -132,9 +164,10 @@ namespace wshttp
                 }
                 return;
             }
+            log->warn("Outbound set to remote domain (host: {}) already cleared finished request: {}", u.host(), u);
         }
-
-        log->warn("Endpoint failed to find any outbounds to remote domain host: {}", u.host());
+        else
+            log->warn("Endpoint failed to find any outbounds to remote domain (host: {}): {}", u.host(), u);
     }
 
     void endpoint::shutdown_endpoint()

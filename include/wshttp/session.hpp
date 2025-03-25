@@ -79,11 +79,11 @@ namespace wshttp
       protected:
         void initiate_request();
 
-        void make_request();
-
         void recv_response(struct evhttp_request* req);
 
       public:
+        void make_request(METHOD method);
+
         auto operator<=>(const outbound_session& o) const { return _uri <=> o._uri; }
         bool operator==(const outbound_session& o) const { return (*this <=> o) == 0; }
         bool operator==(const uri& u) const { return _uri == u; }

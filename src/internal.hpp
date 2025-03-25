@@ -51,18 +51,19 @@ namespace wshttp
 
     static int check_rv(int rv, std::string_view action, int expected = 1)
     {
-        std::optional<std::error_code> ec;
+        if (rv == expected)
+            return rv;
 
-        if (rv != expected)
-            ec.emplace(errno, std::system_category());
+        std::error_code ec{errno, std::system_category()};
 
-        if (ec)
-        {
-            log->error("Error code {} ({}) returned during {}", ec->value(), ec->message(), action);
-            throw std::system_error{*ec};
-        }
-
-        return rv;
+        log->error(
+                "Error code {} ({}) returned during {} (expected:{}, returned:{})",
+                ec.value(),
+                ec.message(),
+                action,
+                expected,
+                rv);
+        throw std::system_error{ec};
     }
 
     namespace detail

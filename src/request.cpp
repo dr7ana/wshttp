@@ -20,12 +20,18 @@ namespace wshttp
         if (not evuri)
             throw std::invalid_argument{"evhttp failed to parse uri input: {}"_format(input)};
 
-        if (auto s = scheme(); s == https_scheme)
-            _scheme = SCHEME::HTTPS;
-        else if (s == http_scheme)
-            _scheme = SCHEME::HTTP;
+        if (auto s = evhttp_uri_get_scheme(evuri); !s)
+            throw std::invalid_argument{"evhttp failed to parse uri scheme (given:{})"_format(input)};
         else
-            throw std::invalid_argument{"uri scheme must be one of HTTP/HTTPS (given:{})"_format(input)};
+        {
+            std::string_view sv{s};
+            if (sv == https_scheme)
+                _scheme = SCHEME::HTTPS;
+            else if (sv == http_scheme)
+                _scheme = SCHEME::HTTP;
+            else
+                throw std::invalid_argument{"uri scheme must be one of HTTP/HTTPS (given:{})"_format(sv)};
+        }
     }
 
     uri_t::~uri_t()
@@ -37,7 +43,15 @@ namespace wshttp
 
     std::string_view uri_t::scheme() const
     {
-        return evhttp_uri_get_scheme(evuri);
+        switch (_scheme)
+        {
+            case SCHEME::HTTP:
+                return http_scheme;
+            case SCHEME::HTTPS:
+                return https_scheme;
+            default:
+                [[unlikely]] return "ERROR"sv;
+        }
     }
 
     http_request::http_request(evhttp_request* r, const char* host) :

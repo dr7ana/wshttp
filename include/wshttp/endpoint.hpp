@@ -74,6 +74,7 @@ namespace wshttp
         // sessions managing outbound https connections
         std::unordered_map<domain_host, outbound_ptr_set> _outbounds{};
 
+        std::atomic<uint64_t> _completed_inbounds{};
         std::atomic<uint64_t> _completed_outbounds{};
 
         std::atomic<bool> _close_immediately{false};
@@ -84,40 +85,21 @@ namespace wshttp
 
         bool _listen(ip_address addr);
 
+        bool _request(std::string_view uri, METHOD method);
+
       public:
         bool listen(ip_v ip, uint16_t port) { return _listen(ip_address{ip, port}); }
 
         bool listen(uint16_t port) { return _listen(ip_address{port}); }
 
-        // template <typename... Opt>
-        // bool test_get(std::string_view url, Opt&&... opts)
-        bool test_get(std::string_view url)
+        // Concept ensures that METHOD::UNSUPPORTED cannot be passed
+        template <supported_method M>
+        bool request(std::string_view uri, M method)
         {
-            return _loop->call_get([&]() {
-                auto _uri = uri::parse(url);
-                if (not _uri)
-                    throw std::invalid_argument{"Failed to parse input url: {}"_format(url)};
-
-                auto host = _uri.host_url();
-
-                auto& outbound_set = _outbounds[host];
-
-                if (outbound_set.contains(_uri))
-                {
-                    log->warn("Outbound session already exists for uri: {}!", _uri);
-                    return false;
-                }
-
-                auto [itr, b] = outbound_set.emplace(make_shared<outbound_session>(*this, std::move(_uri)));
-
-                if (not b)
-                    throw std::invalid_argument{"Outbound session already exists for uri: {}!"_format(url)};
-
-                (*itr)->make_request();
-
-                return true;
-            });
+            return _request(uri, method);
         }
+
+        bool test_get(std::string_view uri) { return _request(uri, METHOD::GET); }
 
         void test_parse_method(std::string url);
 

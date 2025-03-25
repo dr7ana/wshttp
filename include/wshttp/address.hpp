@@ -42,8 +42,6 @@ namespace wshttp
       public:
         static uri populate(struct evhttp_request* r);
 
-        // static uri populate(struct evhttp_uri* r);
-
         template <const_span_convertible T>
         static uri parse(T u)
         {
