@@ -2,10 +2,11 @@
 
 #include "endpoint.hpp"
 #include "internal.hpp"
-#include "types.hpp"
 
 namespace wshttp
 {
+    using req_tuple = std::pair<dns::server*, dns::request_id>;
+
     namespace deleters
     {
         struct _evdns
@@ -21,7 +22,7 @@ namespace wshttp
 
     namespace detail
     {
-        constexpr std::string_view translate_dns_req_class(int t)
+        static constexpr std::string_view translate_dns_req_class(int t)
         {
             switch (t)
             {
@@ -32,7 +33,7 @@ namespace wshttp
             }
         }
 
-        constexpr std::string_view translate_req_type(int t)
+        static constexpr std::string_view translate_req_type(int t)
         {
             switch (t)
             {
@@ -51,7 +52,7 @@ namespace wshttp
             }
         }
 
-        void print_dns_req(struct evdns_server_request* req)
+        static void print_dns_req(struct evdns_server_request* req)
         {
             auto msg = "\n----- INCOMING REQUEST -----\nFlags: {}\nNum questions: {}\n"_format(
                     req->flags, req->nquestions ? req->nquestions : 0);
@@ -72,50 +73,21 @@ namespace wshttp
             log->critical("{}", msg);
         }
 
+        static dns::server* _get_dns(void* user_arg)
+        {
+            return static_cast<dns::server*>(user_arg);
+        }
+
+        static dns::dns_request* _get_dnsreq(void* user_arg)
+        {
+            return static_cast<dns::dns_request*>(user_arg);
+        }
+
     }  // namespace detail
 
-    static dns::server& _get_dns(void* user_arg)
+    void dns_callbacks::gai_cb(int /* err */, struct evutil_addrinfo* /* ai */, void* user_arg)
     {
-        return *static_cast<dns::server*>(user_arg);
-    }
-
-    void dns_callbacks::server_cb(struct evdns_server_request* req, void* user_data)
-    {
-        auto& server = _get_dns(user_data);
-
-        detail::print_dns_req(req);
-
-        int r;
-        auto n_reqs = req ? req->nquestions : 0;
-
-        for (int i = 0; i < n_reqs; ++i)
-        {
-            auto q = req->questions[i];
-
-            switch (q->type)
-            {
-                case EVDNS_TYPE_A:
-                case EVDNS_TYPE_AAAA:
-                case EVDNS_TYPE_CNAME:
-                    r = server.main_lookup(req, q);
-                    break;
-                case EVDNS_TYPE_PTR:
-                case EVDNS_TYPE_SOA:
-                default:
-                    log->critical("Server received invalid request type: {}", detail::translate_req_type(q->type));
-                    break;
-            };
-        }
-
-        r = evdns_server_request_respond(req, 0);
-
-        if (r < 0)
-        {
-            log->critical("Server failed to respond to request... dropping like its hot");
-            evdns_server_request_drop(req);
-        }
-        else
-            log->info("Server successfully responded to request!");
+        detail::_get_dnsreq(user_arg)->hook();
     }
 
     namespace dns
@@ -141,63 +113,57 @@ namespace wshttp
             evdns_base_set_option(_evdns.get(), "randomize-case:", "0");
         }
 
-        void server::initialize()
+        void server::_close_request(request_id req_id)
         {
-            _ep.loop()->call_get([&]() {
-                sockaddr_in _bind;
+            log->trace("{} called", __PRETTY_FUNCTION__);
 
-                _udp_sock = socket(PF_INET, SOCK_DGRAM, 0);
-
-                if (_udp_sock < 0)
-                    throw std::runtime_error{"UDP socket is fucked"};
-
-                if (auto rv = evutil_make_socket_nonblocking(_udp_sock); rv < 0)
-                    throw std::runtime_error{"Failed to non-block UDP socket: {}"_format(detail::current_error())};
-
-                _bind.sin_family = AF_INET;
-                _bind.sin_addr.s_addr = INADDR_ANY;
-                _bind.sin_port = enc::host_to_big(defaults::DNS_PORT);
-
-                if (auto rv = bind(_udp_sock, reinterpret_cast<sockaddr*>(&_bind), sizeof(sockaddr)); rv < 0)
-                    throw std::runtime_error{"DNS server failed to bind UDP port: {}"_format(detail::current_error())};
-
-                _udp_bind = _ep.template shared_ptr<evdns_server_port>(
-                        evdns_add_server_port_with_base(
-                                _ep._loop->loop().get(), _udp_sock, 0, dns_callbacks::server_cb, this),
-                        deleters::_evdns_port{});
-
-                if (not _udp_bind)
-                    throw std::runtime_error{"DNS server failed to add UDP port: {}"_format(detail::current_error())};
-
-                log->debug("DNS server successfully configured UDP socket!");
-
-                // register_nameserver(defaults::DNS_PORT);
+            _ep.loop()->call_soon([this, req_id]() mutable {
+                if (auto it = _requests.find(req_id); it != _requests.end())
+                {
+                    _requests.erase(it);
+                    log->debug("Closed dns request id:{}", req_id);
+                }
+                else
+                    log->warn("Could not find dns request (id:{}) for closure!", req_id);
             });
         }
 
-        void server::register_nameserver(uint16_t port)
+        void server::_dns_request_init(dns_request_cb hook, domain_host host)
         {
-            auto ns_ip = "{}{}"_format(localhost, port);
-            evdns_base_nameserver_ip_add(_evdns.get(), ns_ip.c_str());
-            log->info("Server successfully registered local nameserver ip: {}", ns_ip);
+            log->trace("{} called", __PRETTY_FUNCTION__);
+
+            auto [it, _] = _requests.emplace(dns_request::make(++next_request_id, std::move(hook)));
+
+            hook = [this, cb = std::move(hook), req_id = next_request_id]() mutable {
+                cb();
+                _close_request(req_id);
+            };
+
+            log->trace("Initiating dns request id:{}", next_request_id);
+
+            evutil_addrinfo hints{};
+
+            hints.ai_family = AF_UNSPEC;
+            hints.ai_protocol = IPPROTO_TCP;
+            hints.ai_flags = EVUTIL_AI_CANONNAME;
+
+            if (not evdns_getaddrinfo(
+                        _evdns.get(), host.host_cstr(), nullptr, &hints, dns_callbacks::gai_cb, it->get()))
+            {
+                //
+            }
         }
 
-        int server::main_lookup(struct evdns_server_request* req, struct evdns_server_question* q)
+        void server::gai_request_result(int err, struct evutil_addrinfo* ai)
         {
-            assert(_ep.in_event_loop());
+            if (err)
+            {
+                //
+            }
 
-            auto name = std::string_view{q->name}, type = detail::translate_req_type(q->type);
-            log->info("DNS server received {} req for: {}", type, name);
-
-            const char* res = "";
-            auto is_v6 = q->type == EVDNS_TYPE_AAAA;
-
-            /**
-                TODO: add lookup logic in body
-            */
-
-            return is_v6 ? evdns_server_request_add_aaaa_reply(req, q->name, 1, res, 10)
-                         : evdns_server_request_add_a_reply(req, q->name, 1, res, 10);
+            (void)ai;
+            // (void)req_id;
         }
+
     }  // namespace dns
 }  //  namespace wshttp

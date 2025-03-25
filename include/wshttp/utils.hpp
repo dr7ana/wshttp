@@ -22,15 +22,13 @@ extern "C" {
 #include <optional>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace wshttp
 {
     using namespace std::literals;
     namespace fs = std::filesystem;
-
-    using bstring = std::basic_string<std::byte>;
-    using ustring = std::basic_string<unsigned char>;
 
     inline constexpr auto localhost = "127.0.0.1"sv;
 

@@ -6,7 +6,7 @@ namespace wshttp
 {
     namespace detail
     {
-        void parse_addr(int af, void* dest, const std::string& from)
+        static void parse_addr(int af, void* dest, const std::string& from)
         {
             auto rv = inet_pton(af, from.c_str(), dest);
 
@@ -18,28 +18,41 @@ namespace wshttp
     }  // namespace detail
 
     uri::uri(
-            const std::string_view& _s,
-            const std::string_view& _u,
-            const std::string_view& _h,
-            const std::string_view& _p,
-            const std::string_view& _pn,
-            const std::string_view& _q,
-            const std::string_view& _f,
-            const std::string_view& _hr) :
-            _fields{std::string{_s},
-                    std::string{_u},
-                    std::string{_h},
-                    std::string{_p},
-                    std::string{_pn},
-                    std::string{_q},
-                    std::string{_f},
-                    std::string{_hr}}
-    {}
+            const std::string_view& s,
+            const std::string_view& u,
+            const std::string_view& h,
+            const std::string_view& p,
+            const std::string_view& pn,
+            const std::string_view& q,
+            const std::string_view& f,
+            const std::string_view& hr) :
+            _fields{std::string{s},
+                    std::string{u},
+                    std::string{h},
+                    std::string{p},
+                    std::string{pn},
+                    std::string{q},
+                    std::string{f},
+                    std::string{hr}}
+    {
+        if (auto s = scheme(); !s.empty() && (s != HTTP_S and s != HTTPS_S))
+            throw std::invalid_argument{"uri must use protocol scheme HTTP or HTTPS (given: {})"_format(scheme())};
+
+        if (_fields[_port].empty())
+            _p = use_tls() ? 443 : 80;
+        else
+            _p = std::stoi(_fields[_port]);
+    }
 
     uri uri::populate(struct evhttp_request* r)
     {
         return parser->read(std::string{evhttp_request_get_uri(r)}) ? parser->extract() : uri{};
     }
+
+    // uri uri::populate(struct evhttp_uri* r)
+    // {
+
+    // }
 
     uri uri::parse(const char* c, size_t s)
     {
@@ -49,6 +62,16 @@ namespace wshttp
     domain_host uri::host_url() const
     {
         return domain_host{host()};
+    }
+
+    const char* uri::host_cstr() const
+    {
+        return _fields[_host].c_str();
+    }
+
+    const char* uri::path_cstr() const
+    {
+        return _fields[_pathname].c_str();
     }
 
     std::string uri::to_string() const
@@ -147,6 +170,6 @@ namespace wshttp
 
     std::string path::to_string() const
     {
-        return "[local={}, remote={}]"_format(_local, _remote);
+        return "[ local:{} | remote:{}]"_format(_local, _remote);
     }
 }  //  namespace wshttp

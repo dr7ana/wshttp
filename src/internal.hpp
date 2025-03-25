@@ -2,7 +2,7 @@
 
 #include "encoding.hpp"
 // #include "format.hpp"
-#include "request.hpp"
+#include "endpoint.hpp"
 
 extern "C" {
 #include <openssl/types.h>
@@ -49,9 +49,44 @@ namespace wshttp
     // global parser
     extern std::shared_ptr<url_parser> parser;
 
+    static int check_rv(int rv, std::string_view action, int expected = 1)
+    {
+        std::optional<std::error_code> ec;
+
+        if (rv != expected)
+            ec.emplace(errno, std::system_category());
+
+        if (ec)
+        {
+            log->error("Error code {} ({}) returned during {}", ec->value(), ec->message(), action);
+            throw std::system_error{*ec};
+        }
+
+        return rv;
+    }
+
     namespace detail
     {
         const char* current_error();
+
+        inline constexpr auto evreq_err_str(evhttp_request_error ec)
+        {
+            switch (ec)
+            {
+                case EVREQ_HTTP_TIMEOUT:
+                    return "REQUEST TIMEOUT"sv;
+                case EVREQ_HTTP_EOF:
+                    return "EOF REACHED"sv;
+                case EVREQ_HTTP_INVALID_HEADER:
+                    return "INVALID HEADER"sv;
+                case EVREQ_HTTP_BUFFER_ERROR:
+                    return "R/W BUFFER ERROR"sv;
+                case EVREQ_HTTP_REQUEST_CANCEL:
+                    return "REQUEST CANCELLED"sv;
+                case EVREQ_HTTP_DATA_TOO_LONG:
+                    return "DATA TOO LONG"sv;
+            }
+        }
 
         void setup_ssl_library();
 
@@ -65,9 +100,14 @@ namespace wshttp
             return get_connection_address(evhttp_request_get_connection(req));
         }
 
+        inline bufferevent* get_request_bev(evhttp_request* req)
+        {
+            return evhttp_connection_get_bufferevent(evhttp_request_get_connection(req));
+        }
+
         inline evutil_socket_t get_request_fd(evhttp_request* req)
         {
-            return bufferevent_getfd(evhttp_connection_get_bufferevent(evhttp_request_get_connection(req)));
+            return bufferevent_getfd(get_request_bev(req));
         }
 
         inline constexpr auto get_method_string(METHOD m)
@@ -92,9 +132,31 @@ namespace wshttp
 
         inline METHOD get_request_method(evhttp_request* req)
         {
-            static constexpr uint8_t BITMASK{0b00001111};
-            return METHOD{std::bit_width(
-                    static_cast<uint8_t>((std::to_underlying(evhttp_request_get_command(req)) & BITMASK)))};
+            static constexpr uint8_t BITMASK{0b00011111};
+            return METHOD{static_cast<uint8_t>(
+                    std::bit_width(static_cast<uint8_t>(evhttp_request_get_command(req) & BITMASK)))};
+            // static_cast<uint8_t>((std::to_underlying(evhttp_request_get_command(req)) & BITMASK)))};
+        }
+
+        inline evhttp_cmd_type get_method_cmd_type(METHOD m)
+        {
+            switch (m)
+            {
+                case METHOD::GET:
+                    return EVHTTP_REQ_GET;
+                case METHOD::POST:
+                    return EVHTTP_REQ_POST;
+                case METHOD::HEAD:
+                    return EVHTTP_REQ_HEAD;
+                case METHOD::PUT:
+                    return EVHTTP_REQ_PUT;
+                case METHOD::DELETE:
+                    return EVHTTP_REQ_DELETE;
+                case METHOD::UNSUPPORTED:
+                    [[unlikely]] [[fallthrough]];
+                default:
+                    [[unlikely]] throw std::runtime_error{"Cannot create evhttp request for unsupported method!"};
+            }
         }
 
     }  // namespace detail
@@ -115,11 +177,20 @@ namespace wshttp
                 const unsigned char* in,
                 unsigned int inlen,
                 void* arg);
+
+        static int ssl_cert_verify_cb(X509_STORE_CTX* x509_ctx, void* user_arg);
     };
 
     struct dns_callbacks
     {
-        static void server_cb(struct evdns_server_request* req, void* user_arg);
+        static void gai_cb(int err, struct evutil_addrinfo* ai, void* user_arg);
+    };
+
+    struct outbound_callbacks
+    {
+        static void req_done_cb(struct evhttp_request* req, void* user_arg);
+
+        static void req_error_cb(evhttp_request_error ec, void* user_arg);
     };
 
     struct listen_callbacks
@@ -136,6 +207,11 @@ namespace wshttp
 
         static int error_cb(
                 struct evhttp_request* req, struct evbuffer* buffer, int error, const char* reason, void* user_arg);
+    };
+
+    struct request_callbacks
+    {
+        //
     };
 
     struct ws_callbacks

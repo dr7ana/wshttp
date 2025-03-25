@@ -32,7 +32,7 @@ namespace wshttp
     class startup_elapsed_flag : public spdlog::custom_flag_formatter
     {
       private:
-        static constexpr fmt::format_string<
+        static constexpr std::format_string<
                 std::chrono::hours::rep,
                 std::chrono::minutes::rep,
                 std::chrono::seconds::rep,
@@ -47,7 +47,7 @@ namespace wshttp
             using namespace std::literals;
             auto elapsed = std::chrono::steady_clock::now() - started_at;
 
-            dest.append(fmt::format(
+            dest.append(std::format(
                     elapsed >= 1h     ? format_hours
                     : elapsed >= 1min ? format_minutes
                                       : format_seconds,
@@ -119,11 +119,11 @@ namespace wshttp
         auto& b = buf;
         std::string out;
         auto ins = std::back_inserter(out);
-        fmt::format_to(ins, "Buffer[{}/{:#x} bytes]:", b.size(), b.size());
+        std::format_to(ins, "Buffer[{}/{:#x} bytes]:", b.size(), b.size());
 
         for (size_t i = 0; i < b.size(); i += 32)
         {
-            fmt::format_to(ins, "\n{:04x} ", i);
+            std::format_to(ins, "\n{:04x} ", i);
 
             size_t stop = std::min(b.size(), i + 32);
             for (size_t j = 0; j < 32; j++)
@@ -134,7 +134,7 @@ namespace wshttp
                 if (k >= stop)
                     out.append("  ");
                 else
-                    fmt::format_to(ins, "{:02x}", std::to_integer<uint_fast16_t>(b[k]));
+                    std::format_to(ins, "{:02x}", std::to_integer<uint_fast16_t>(b[k]));
             }
             out.append("  ┃");
             for (size_t j = i; j < stop; j++)

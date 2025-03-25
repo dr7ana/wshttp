@@ -30,7 +30,7 @@ namespace wshttp
 
     bool url_parser::_parse()
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
+        log->trace("{} called", __PRETTY_FUNCTION__);
         _res = std::make_unique<url_result>(ada::parse<ada::url_aggregator>(*_data));
 
         if (not _res or not *_res)
@@ -39,15 +39,23 @@ namespace wshttp
             return false;
         }
 
-        if (auto proto = _url()->get_protocol(); proto != HTTP_SCHEME and proto != HTTPS_SCHEME)
+        auto proto = _url()->get_protocol();
+
+        if (proto != HTTP_S and proto != HTTPS_S)
         {
             log->critical("Invalid protocol (input: {}); must be either `http` or `https`", proto);
             return false;
         }
 
+        if (_url()->get_port() == "")
+        {
+            _url()->set_port(proto == HTTPS_S ? "443" : "80");
+            log->trace("port:{}", _url()->get_port());
+        }
+
         if (_url()->validate())
         {
-            log->debug("Successfully parsed input...");
+            log->trace("Successfully parsed input...");
             return true;
         }
 
@@ -111,7 +119,7 @@ namespace wshttp
         log->critical("scheme: {}", u.scheme());
         log->critical("userinfo: {}", u.userinfo());
         log->critical("host: {}", u.host());
-        log->critical("port: {}", u.port());
+        log->critical("port: {}", u.port_str());
         log->critical("special port: {}", _url()->get_special_port());
         log->critical("path: {}", u.path());
         log->critical("query: {}", u.query());

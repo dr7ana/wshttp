@@ -10,8 +10,8 @@ namespace wshttp
 {
     static constexpr size_t URI_FIELDS{8};
     static constexpr uint16_t HTTPS_PORT{443};
-    static constexpr auto HTTPS_SCHEME = "https:"sv;
-    static constexpr auto HTTP_SCHEME = "http:"sv;
+    static constexpr auto HTTPS_S = "https:"sv;
+    static constexpr auto HTTP_S = "http:"sv;
 
     struct domain_host;
 
@@ -36,29 +36,39 @@ namespace wshttp
 
         static uri parse(const char* c, size_t s);
 
-      public:
         std::array<std::string, URI_FIELDS> _fields{};
+        int _p{};
 
+      public:
         static uri populate(struct evhttp_request* r);
+
+        // static uri populate(struct evhttp_uri* r);
 
         template <const_span_convertible T>
         static uri parse(T u)
         {
-            return uri::parse(std::string{reinterpret_cast<const char*>(u.data()), u.size()});
+            return uri::parse(reinterpret_cast<const char*>(u.data()), u.size());
         }
 
         static uri parse(std::string_view u) { return uri::parse(u.data(), u.size()); }
 
+        int port() const { return _p; }
+
         std::string_view scheme() const { return _fields[_scheme]; }
         std::string_view userinfo() const { return _fields[_userinfo]; }
         std::string_view host() const { return _fields[_host]; }
-        std::string_view port() const { return _fields[_port]; }
+        std::string_view port_str() const { return _fields[_port]; }
         std::string_view path() const { return _fields[_pathname]; }
         std::string_view query() const { return _fields[_query]; }
         std::string_view fragment() const { return _fields[_fragment]; }
         std::string_view href() const { return _fields[_href]; }
 
         domain_host host_url() const;
+        const char* host_cstr() const;
+        const char* path_cstr() const;
+
+        bool use_tls() const { return scheme() == HTTPS_S; }
+        bool is_ipv6() const { return host().starts_with('['); }
 
         std::string to_string() const;
         static constexpr bool to_string_formattable = true;
@@ -84,6 +94,7 @@ namespace wshttp
 
       public:
         std::string_view host() const { return _host; }
+        const char* host_cstr() const { return _host.c_str(); }
 
         auto operator<=>(const domain_host& d) const { return _host <=> d._host; }
         bool operator==(const domain_host& d) const { return (*this <=> d) == 0; }
@@ -201,8 +212,10 @@ namespace wshttp
                 throw std::runtime_error{"Failed to understand incoming address sa_family: {}"_format(in->sa_family)};
         }
 
+        explicit constexpr ip_address(ip_v ip, uint16_t port) : _ip{ip}, _port{port}, _is_v4{!_ip.index()} {}
+
         template <ip_type T>
-        constexpr explicit ip_address(T ip, uint16_t p) : _ip{ip}, _port{p}, _is_v4{!_ip.index()}
+        constexpr explicit ip_address(T ip, uint16_t port) : _ip{ip}, _port{port}, _is_v4{!_ip.index()}
         {}
 
         ip_address(const ip_address& a) { _copy_internals(a); }

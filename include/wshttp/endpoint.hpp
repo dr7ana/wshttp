@@ -3,7 +3,7 @@
 #include "address.hpp"
 #include "dns.hpp"
 #include "loop.hpp"
-#include "request.hpp"
+#include "session.hpp"
 
 namespace wshttp
 {
@@ -19,8 +19,7 @@ namespace wshttp
 
     class endpoint final : public std::enable_shared_from_this<endpoint>
     {
-        friend class inbound_session;
-        friend class outbound_node;
+        friend class outbound_session;
         friend struct ws_session_base;
         friend class listener;
         friend class stream;
@@ -31,15 +30,14 @@ namespace wshttp
         explicit endpoint(std::shared_ptr<event_loop> ev_loop, Opt&&... opts) :
                 _loop{std::move(ev_loop)},
                 _dns{_loop->template make_shared<dns::server>(*this)},
-                client_id{++next_client_id}
+                caller_id{++next_caller_id}
         {
             require_ssl_creds<Opt...>();
 
             if constexpr (sizeof...(opts))
                 handle_ep_opt(std::forward<Opt>(opts)...);
 
-            // _dns->initialize();
-            log->trace("Client endpoint created with initialized event loop!");
+            _init_internals();
         }
 
       public:
@@ -65,58 +63,61 @@ namespace wshttp
         std::shared_ptr<dns::server> _dns;
         std::shared_ptr<app_context> _ctx;
 
-        const caller_id_t client_id;
-        static caller_id_t next_client_id;
+        std::shared_ptr<ev_watcher> _stats;
+
+        const caller_id_t caller_id;
+        static caller_id_t next_caller_id;
 
         // local listeners managing inbound https connections
-        std::unordered_map<uint16_t, std::shared_ptr<listener>> _listeners{};
+        std::unordered_map<ip_address, std::shared_ptr<listener>> _listeners{};
 
         // sessions managing outbound https connections
-        // std::unordered_map<domain_host, std::shared_ptr<outbound_node>> _outbounds{};
+        std::unordered_map<domain_host, outbound_ptr_set> _outbounds{};
+
+        std::atomic<uint64_t> _completed_outbounds{};
 
         std::atomic<bool> _close_immediately{false};
 
+        void _init_internals();
+
+        void _print_stats();
+
+        bool _listen(ip_address addr);
+
       public:
-        bool listen(uint16_t port)
+        bool listen(ip_v ip, uint16_t port) { return _listen(ip_address{ip, port}); }
+
+        bool listen(uint16_t port) { return _listen(ip_address{port}); }
+
+        // template <typename... Opt>
+        // bool test_get(std::string_view url, Opt&&... opts)
+        bool test_get(std::string_view url)
         {
             return _loop->call_get([&]() {
-                auto [itr, b] = _listeners.try_emplace(port, nullptr);
+                auto _uri = uri::parse(url);
+                if (not _uri)
+                    throw std::invalid_argument{"Failed to parse input url: {}"_format(url)};
+
+                auto host = _uri.host_url();
+
+                auto& outbound_set = _outbounds[host];
+
+                if (outbound_set.contains(_uri))
+                {
+                    log->warn("Outbound session already exists for uri: {}!", _uri);
+                    return false;
+                }
+
+                auto [itr, b] = outbound_set.emplace(make_shared<outbound_session>(*this, std::move(_uri)));
 
                 if (not b)
-                    throw std::invalid_argument{
-                            "Cannot create tcp-listener at port {} -- listener already exists!"_format(port)};
+                    throw std::invalid_argument{"Outbound session already exists for uri: {}!"_format(url)};
 
-                itr->second = make_shared<listener>(*this, port);
-
-                if (not itr->second)
-                    throw std::runtime_error{"TCP listener construction failed!"};
+                (*itr)->make_request();
 
                 return true;
             });
         }
-
-        // template <typename... Opt>
-        // bool connect(std::string_view url, Opt&&... opts)
-        // {
-        //     return call_get([&]() {
-        //         auto _uri = uri::parse(url);
-        //         if (not _uri)
-        //             throw std::invalid_argument{"Failed to parse input url: {}"_format(url)};
-
-        //         auto [itr, b] = _outbounds.try_emplace(_uri.host_url(), nullptr);
-
-        //         if (not b)
-        //             throw std::invalid_argument{
-        //                     "Cannot create outbound node for input: {} -- node already exists!"_format(url)};
-
-        //         itr->second = make_shared<outbound_node>(*this, std::move(_uri), std::forward<Opt>(opts)...);
-
-        //         if (not itr->second)
-        //             throw std::runtime_error{"Node construction is fucked"};
-
-        //         return true;
-        //     });
-        // }
 
         void test_parse_method(std::string url);
 
@@ -139,7 +140,11 @@ namespace wshttp
             return _loop->template make_shared<T>(std::forward<Args>(args)...);
         }
 
-        void close_listener(uint16_t p);
+        void close_listener(ip_address b);
+
+        void close_listener(uint16_t p) { return close_listener(ip_address{p}); }
+
+        void close_outbound(uri u);
 
         void shutdown_endpoint();
 
@@ -148,6 +153,8 @@ namespace wshttp
         SSL_CTX* outbound_ctx();
 
         struct event_base* ev_base() { return loop()->loop().get(); }
+
+        struct evdns_base* dns_base() { return *_dns; }
 
         struct evhttp* make_evhttp();
 

@@ -13,6 +13,7 @@ add_library(
     loop.cpp
     parser.cpp
     request.cpp
+    session.cpp
     ssl.cpp
     types.cpp
     utils.cpp

@@ -10,17 +10,11 @@ extern "C" {
 
 namespace wshttp
 {
-    class local_node
+    class socket_interface
     {
       protected:
-        ip_address _local{};
-
-        virtual void _init_internals() = 0;
-
-      public:
-        local_node(ip_address l) : _local{std::move(l)} {}
-
-        virtual bufferevent* new_nev() = 0;
+        virtual SSL* new_ssl() = 0;
+        virtual bufferevent* new_bev() = 0;
         virtual void close() = 0;
     };
 
@@ -45,7 +39,7 @@ namespace wshttp
     using tcp_listener = std::unique_ptr<evconnlistener, deleters::_evconnlistener>;
     using evhttp_ptr = std::unique_ptr<::evhttp, deleters::_evhttp>;
 
-    class listener
+    class listener final : public socket_interface
     {
         friend struct inbound_request;
         friend struct ws_session_base;
@@ -53,7 +47,8 @@ namespace wshttp
         friend class event_loop;
         friend struct listen_callbacks;
 
-        explicit listener(endpoint& e, uint16_t p);
+        explicit listener(endpoint& e, ip_address bind);
+        explicit listener(endpoint& e, uint16_t p) : listener{e, ip_address{p}} {}
 
       public:
         listener() = delete;
@@ -80,22 +75,22 @@ namespace wshttp
       protected:
         int recv_request(struct evhttp_request* req);
 
-        void process_request(struct evhttp_request* req);
+        void handle_request(struct evhttp_request* req);
 
         int request_error(struct evhttp_request* req, int error, const char* reason);
 
         void ws_request(struct evhttp_request* req);
 
-        bufferevent* new_bev();
+        bufferevent* new_bev() override;
 
-        SSL* new_ssl();
+        SSL* new_ssl() override;
 
         void close_all();
 
-        void close_listener();
+        void close() override;
 
-        void close_request_session(ip_address remote);
+        void close_request(ip_address remote);
 
-        void close_ws_session(ip_address remote);
+        void close_ws(ip_address remote);
     };
 }  //  namespace wshttp

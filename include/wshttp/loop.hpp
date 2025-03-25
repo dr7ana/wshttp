@@ -109,22 +109,16 @@ namespace wshttp
         void call(Callable&& f)
         {
             if (in_event_loop())
-            {
                 f();
-            }
             else
-            {
                 call_soon(std::forward<Callable>(f));
-            }
         }
 
         template <typename Callable, typename Ret = decltype(std::declval<Callable>()())>
         Ret call_get(Callable&& f)
         {
             if (in_event_loop())
-            {
                 return f();
-            }
 
             std::promise<Ret> prom;
             auto fut = prom.get_future();
@@ -157,11 +151,11 @@ namespace wshttp
                 - start_immediately : will call ::event_add() before returning the ticker
                 - wait :
                     - if FALSE (default behavior), the interval will not wait for the event to
-           complete. will attempt to execute every `interval`, regardless of how long the event
-           itself takes.
+                        complete. will attempt to execute every `interval`, regardless of how long the event
+                        itself takes.
                     - if TRUE, the interval will wait for the event to complete before beginning. It
-           will wait the entire `interval` after finishing execution of the event before attempting
-           execution again.
+                        will wait the entire `interval` after finishing execution of the event before attempting
+                        execution again.
         */
         template <typename Callable>
         [[nodiscard]] std::shared_ptr<ev_watcher> call_every(
@@ -174,9 +168,7 @@ namespace wshttp
         void call_later(std::chrono::microseconds delay, Callable hook)
         {
             if (in_event_loop())
-            {
                 add_oneshot_event(delay, std::move(hook));
-            }
             else
             {
                 call_soon([this, func = std::move(hook), target_time = detail::get_time() + delay]() mutable {
@@ -280,7 +272,7 @@ namespace wshttp
         {
             auto h = make_handler(_id);
 
-            h->init_event(loop(), interval, std::forward<Callable>(f), start_immediately, fixed_interval);
+            h->init_event(loop(), interval, std::forward<Callable>(f), false, start_immediately, fixed_interval);
 
             return h;
         }

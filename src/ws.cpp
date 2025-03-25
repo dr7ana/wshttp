@@ -58,6 +58,6 @@ namespace wshttp
     {
         log->info("Signalling listener to close WS session (remote:{})", _path.remote());
 
-        _l._ep.loop()->call_soon([this, remote = _path.remote()]() mutable { _l.close_ws_session(remote); });
+        _l._ep.loop()->call_soon([this, remote = _path.remote()]() mutable { _l.close_ws(remote); });
     }
 }  // namespace wshttp

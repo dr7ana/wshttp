@@ -8,7 +8,7 @@ namespace wshttp
     {
         const char* current_error()
         {
-            return ERR_error_string(ERR_get_error(), NULL);
+            return ERR_error_string(ERR_get_error(), nullptr);
         }
 
         void setup_ssl_library()
@@ -50,22 +50,6 @@ namespace wshttp
         ++(*counter);
         return {static_cast<unsigned char>(*counter >> 8), static_cast<unsigned char>(*counter)};
     };
-
-    static int check_rv(int rv, std::string_view action, int expected = 1)
-    {
-        std::optional<std::error_code> ec;
-
-        if (rv != expected)
-            ec.emplace(errno, std::system_category());
-
-        if (ec)
-        {
-            log->error("Error code {} ({}) returned during {}", ec->value(), ec->message(), action);
-            throw std::system_error{*ec};
-        }
-
-        return rv;
-    }
 
     static void set_sslopts(::SSL_CTX* ctx, bool outbound)
     {
@@ -209,8 +193,6 @@ namespace wshttp
             assert(storage.index() == 0);
             const auto& [certfile, keyfile] = std::get<cert_pk_file_pair>(storage).cert_keypair();
 
-            log->debug("keyfile:{} | certfile:{}", keyfile.c_str(), certfile.c_str());
-
             log->debug("Configuring inbound SSL context using user-provided key/cert...");
 
             check_rv(
@@ -254,7 +236,6 @@ namespace wshttp
 
         set_sslopts(ctx, false);
 
-        // SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
         // SSL_CTX_set_alpn_select_cb(ctx, ctx_callbacks::server_select_alpn_proto_cb, this);
     }
 

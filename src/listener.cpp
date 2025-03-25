@@ -8,7 +8,7 @@ namespace wshttp
 {
     namespace detail
     {
-        inline listener* _get_listener(void* user_arg)
+        static listener* _get_listener(void* user_arg)
         {
             return static_cast<listener*>(user_arg);
         }
@@ -17,7 +17,7 @@ namespace wshttp
     void listen_callbacks::gen_cb(struct evhttp_request* req, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
-        return detail::_get_listener(user_arg)->process_request(req);
+        return detail::_get_listener(user_arg)->handle_request(req);
     }
 
     bufferevent* listen_callbacks::bev_cb(struct event_base* /* ev */, void* user_arg)
@@ -41,7 +41,7 @@ namespace wshttp
     void listen_callbacks::close_cb(struct evhttp_connection* conn, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
-        return detail::_get_listener(user_arg)->close_request_session(detail::get_connection_address(conn));
+        return detail::_get_listener(user_arg)->close_request(detail::get_connection_address(conn));
     }
 
     int listen_callbacks::error_cb(
@@ -51,9 +51,7 @@ namespace wshttp
         return detail::_get_listener(user_arg)->request_error(req, error, reason);
     }
 
-    static constexpr auto default_ipv4_anyaddr = "0.0.0.0"sv;
-
-    listener::listener(endpoint& e, uint16_t p) : _ep{e}, _local{ipv4_anyaddr, p}
+    listener::listener(endpoint& e, ip_address bind) : _ep{e}, _local{std::move(bind)}
     {
         _init_internals();
     }
@@ -62,10 +60,22 @@ namespace wshttp
     {
         assert(_ep.in_event_loop());
 
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port = enc::host_to_big(_local.port());
+        sockaddr saddr{};
+
+        if (_local.is_ipv4())
+        {
+            auto* in = reinterpret_cast<sockaddr_in*>(&saddr);
+            in->sin_family = AF_INET;
+            in->sin_addr = _local;  // operator in_addr()
+            in->sin_port = enc::host_to_big(_local.port());
+        }
+        else
+        {
+            auto* in6 = reinterpret_cast<sockaddr_in6*>(&saddr);
+            in6->sin6_family = AF_INET6;
+            in6->sin6_addr = _local;  // operator in6_addr()
+            in6->sin6_port = enc::host_to_big(_local.port());
+        }
 
         _tcp.reset(evconnlistener_new_bind(
                 _ep.ev_base(),
@@ -73,7 +83,7 @@ namespace wshttp
                 this,
                 LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE,
                 -1,
-                reinterpret_cast<sockaddr*>(&addr),
+                reinterpret_cast<sockaddr*>(&saddr),
                 sizeof(sockaddr)));
 
         if (not _tcp)
@@ -85,14 +95,12 @@ namespace wshttp
         evhttp_set_cb(_evh.get(), "/ws", listen_callbacks::ws_cb, this);
         evhttp_set_bevcb(_evh.get(), listen_callbacks::bev_cb, this);
         evhttp_set_newreqcb(_evh.get(), listen_callbacks::newreq_cb, this);
+        evhttp_set_errorcb(_evh.get(), listen_callbacks::error_cb, this);
 
         evhttp_bound_socket* handle = evhttp_bind_listener(_evh.get(), _tcp.get());
-        // evhttp_bound_socket* handle =
-        //         evhttp_bind_socket_with_handle(_evh.get(), default_ipv4_anyaddr.data(), _local.port());
 
         if (!handle)
-            throw std::runtime_error{
-                    "Failed to bind evhttp socket to {}:{}"_format(default_ipv4_anyaddr, _local.port())};
+            throw std::runtime_error{"Failed to bind evhttp listener to {}"_format(_local)};
 
         _fd = evhttp_bound_socket_get_fd(handle);
         log->debug("evhttp listener has fd: {}", _fd);
@@ -118,8 +126,8 @@ namespace wshttp
 
         try
         {
-            it->second =
-                    _ep.template make_shared<inbound_request>(*this, std::move(remote), detail::get_request_fd(req));
+            it->second = _ep.template make_shared<inbound_request>(
+                    /* *this,  */ std::move(remote), detail::get_request_fd(req));
         }
         catch (const std::exception& e)
         {
@@ -140,31 +148,20 @@ namespace wshttp
         return 0;
     }
 
-    void listener::process_request(struct evhttp_request* req)
+    void listener::handle_request(struct evhttp_request* req)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        auto method = detail::get_request_method(req);
         auto remote = detail::get_request_address(req);
 
-        switch (method)
-        {
-            case METHOD::UNSUPPORTED:
-                log->warn(
-                        "Received unsupported HTTP request (code:{})",
-                        std::to_underlying(evhttp_request_get_command(req)));
-                return evhttp_send_error(req, HTTP_BADMETHOD, nullptr);
-            case METHOD::GET:
-            case METHOD::POST:
-            case METHOD::HEAD:
-            case METHOD::PUT:
-            case METHOD::DELETE:
-                log->info("Received {} HTTP request from {}", detail::get_method_string(method), remote);
-                log->debug("Request body: {}", uri::populate(req));
-                break;
-        }
+        if (auto it = _requests.find(remote); it != _requests.end())
+            return it->second->recv_request(req);
 
-        evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+        log->warn(
+                "Received HTTP request (type:{}) from unknown remote: {}",
+                detail::get_method_string(detail::get_request_method(req)),
+                remote);
+        evhttp_send_error(req, HTTP_FORBIDDEN, nullptr);
     }
 
     int listener::request_error(struct evhttp_request* req, int error, const char* reason)
@@ -228,21 +225,19 @@ namespace wshttp
     listener::~listener()
     {
         log->debug("Closing listener on port: {}", _local.port());
-        close_listener();
+        close();
     }
 
     void listener::close_all()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
-
         assert(_ep.in_event_loop());
-        _ep.loop()->call([&]() {
-            log->info("listener (port:{}) closing all sessions...", _local.port());
-            _requests.clear();
-        });
+        log->info("listener (port:{}) closing all sessions...", _local.port());
+
+        _requests.clear();
+        _sessions.clear();
     }
 
-    void listener::close_listener()
+    void listener::close()
     {
         log->warn("Evconnlistener error; signalling endpoint to close listener...");
 
@@ -254,7 +249,7 @@ namespace wshttp
         });
     }
 
-    void listener::close_request_session(ip_address remote)
+    void listener::close_request(ip_address remote)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
@@ -264,7 +259,7 @@ namespace wshttp
             log->warn("Listener failed to find session (remote: {}) to close!", remote);
     }
 
-    void listener::close_ws_session(ip_address remote)
+    void listener::close_ws(ip_address remote)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 

@@ -4,43 +4,55 @@
 
 namespace wshttp
 {
-    using namespace wshttp::literals;
+    enum class SCHEME : uint8_t { HTTP = 0, HTTPS = 1 };
 
-    enum class METHOD : int { UNSUPPORTED = 0, GET = 1, POST = 2, HEAD = 3, PUT = 4, DELETE = 5 };
+    enum class METHOD : uint8_t { UNSUPPORTED = 0, GET = 1, POST = 2, HEAD = 3, PUT = 4, DELETE = 5 };
 
-    namespace deleters
+    template <typename T>
+    concept supported_method = std::is_same_v<T, METHOD> && requires(T a) { std::to_underlying(a) > 0; };
+
+    struct uri_t
     {
-        struct _bufferevent
-        {
-            inline void operator()(::bufferevent* b) const
-            {
-                if (b)
-                    bufferevent_free(b);
-            }
-        };
-    }  // namespace deleters
+        uri_t() = delete;
 
-    using bufferevent_ptr = std::unique_ptr<::bufferevent, deleters::_bufferevent>;
+        uri_t(std::string_view input) : uri_t{input.data(), input.size()} {}
 
-    struct inbound_request
-    {
-        friend class listener;
+        template <const_span_convertible T>
+        uri_t(T input) : uri_t{reinterpret_cast<const char*>(input.data()), input.size()}
+        {}
 
-        explicit inbound_request(listener& l, ip_address remote, evutil_socket_t sock);
+        ~uri_t();
 
       private:
-        listener& _l;
+        uri_t(const char* input, size_t inputlen);
 
-        uri _uri;
+        evhttp_uri* evuri;
 
-        path _path;
-
-        evutil_socket_t _fd{-1};
-
-      protected:
-        // int recv_initial(struct evhttp_request* req);
+        SCHEME _scheme;
 
       public:
+        std::string_view scheme() const;
+    };
+
+    struct hdr
+    {
+        static constexpr auto* host = "Host";
+        static constexpr auto* conn = "Connection";
+        static constexpr auto* close = "close";
+    };
+
+    // wrapper for am evhttp_request
+    struct http_request
+    {
+        evhttp_request* req = nullptr;
+
+        http_request(evhttp_request* r, const char* host);
+
+      protected:
+        evkeyvalq* buffer = nullptr;
+
+      public:
+        // void make();
         //
     };
 }  //  namespace wshttp

@@ -2,11 +2,11 @@
 
 #include "types.hpp"
 
-#include <fmt/format.h>
 #include <spdlog/sinks/dist_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include <format>
 #include <source_location>
 
 using namespace std::literals;
@@ -47,9 +47,34 @@ namespace wshttp
             template <typename... T>
             constexpr auto operator()(T&&... args) &&
             {
-                return fmt::format(Format.sv(), std::forward<T>(args)...);
+                return std::format(Format.sv(), std::forward<T>(args)...);
             }
         };
+
+        template <typename It, typename Sentinel>
+        struct join_view_t
+        {
+            It begin;
+            Sentinel end;
+            std::string_view delim;
+
+            join_view_t(It b, Sentinel s, std::string_view d) : begin{b}, end{s}, delim{d} {}
+        };
+
+        template <typename It, typename Sentinel>
+        auto join(It begin, Sentinel end, std::string_view d) -> join_view_t<It, Sentinel>
+        {
+            return {begin, end, d};
+        }
+
+        // template <std::ranges::range Range>
+        template <typename Range>
+        auto join(Range&& r, std::string_view d)
+                -> join_view_t<std::ranges::iterator_t<Range>, std::ranges::sentinel_t<Range>>
+        {
+            return join(std::ranges::begin(r), std::ranges::end(r), d);
+        }
+
     }  //  namespace detail
 
     template <detail::string_literal Format>
@@ -73,9 +98,9 @@ namespace wshttp
         }
 
         template <typename... Args>
-        void trace(fmt::format_string<Args...> fmt, Args&&... args)
+        void trace(std::string_view fmt, Args&&... args)
         {
-            _logger->trace(std::move(fmt), std::forward<Args>(args)...);
+            _logger->trace(fmt, std::forward<Args>(args)...);
         }
 
         template <typename T>
@@ -85,9 +110,9 @@ namespace wshttp
         }
 
         template <typename... Args>
-        void debug(fmt::format_string<Args...> fmt, Args&&... args)
+        void debug(std::string_view fmt, Args&&... args)
         {
-            _logger->debug(std::move(fmt), std::forward<Args>(args)...);
+            _logger->debug(fmt, std::forward<Args>(args)...);
         }
 
         template <typename T>
@@ -97,9 +122,9 @@ namespace wshttp
         }
 
         template <typename... Args>
-        void info(fmt::format_string<Args...> fmt, Args&&... args)
+        void info(std::string_view fmt, Args&&... args)
         {
-            _logger->info(std::move(fmt), std::forward<Args>(args)...);
+            _logger->info(fmt, std::forward<Args>(args)...);
         }
 
         template <typename T>
@@ -109,9 +134,9 @@ namespace wshttp
         }
 
         template <typename... Args>
-        void warn(fmt::format_string<Args...> fmt, Args&&... args)
+        void warn(std::string_view fmt, Args&&... args)
         {
-            _logger->warn(std::move(fmt), std::forward<Args>(args)...);
+            _logger->warn(fmt, std::forward<Args>(args)...);
         }
 
         template <typename T>
@@ -121,9 +146,9 @@ namespace wshttp
         }
 
         template <typename... Args>
-        void critical(fmt::format_string<Args...> fmt, Args&&... args)
+        void critical(std::string_view fmt, Args&&... args)
         {
-            _logger->critical(std::move(fmt), std::forward<Args>(args)...);
+            _logger->critical(fmt, std::forward<Args>(args)...);
         }
 
         template <typename T>
@@ -133,9 +158,9 @@ namespace wshttp
         }
 
         template <typename... Args>
-        void error(fmt::format_string<Args...> fmt, Args&&... args)
+        void error(std::string_view fmt, Args&&... args)
         {
-            _logger->error(std::move(fmt), std::forward<Args>(args)...);
+            _logger->error(fmt, std::forward<Args>(args)...);
         }
 
         void set_level(std::string level);
@@ -198,26 +223,54 @@ namespace wshttp
 
 }  //  namespace wshttp
 
-namespace fmt
+namespace std
 {
-    template <wshttp::to_string_formattable T>
+    using namespace wshttp;
+
+    template <to_string_formattable T>
     struct formatter<T, char> : formatter<std::string_view>
     {
-        template <typename FormatContext>
-        auto format(const T& val, FormatContext& ctx) const
+        auto format(const T& val, std::format_context& ctx) const
         {
             return formatter<std::string_view>::format(val.to_string(), ctx);
         }
     };
 
-    template <wshttp::const_span_type T>
+    template <const_span_type T>
     struct formatter<T, char> : formatter<std::string_view>
     {
-        template <typename FormatContext>
-        auto format(const T& val, FormatContext& ctx) const
+        auto format(const T& val, std::format_context& ctx) const
         {
             return formatter<std::string_view>::format(
                     std::string_view{reinterpret_cast<const char*>(val.data()), val.size()}, ctx);
         }
     };
-}  // namespace fmt
+
+    template <typename It, typename Sentinel>
+    struct formatter<detail::join_view_t<It, Sentinel>, char> : formatter<std::string_view>
+    {
+        using sv_formatter = formatter<std::string_view>;
+
+        auto format(const detail::join_view_t<It, Sentinel>& v, std::format_context& ctx) const
+        {
+            auto it = v.begin;
+            auto out = ctx.out();
+
+            if (it == v.end)
+                return out;
+
+            out = sv_formatter::format(*it, ctx);
+            ++it;
+
+            while (it != v.end)
+            {
+                out = copy(v.delim.begin(), v.delim.end(), out);
+                ctx.advance_to(out);
+                out = sv_formatter::format(*it, ctx);
+                ++it;
+            }
+
+            return out;
+        }
+    };
+}  // namespace std

@@ -6,21 +6,25 @@ namespace wshttp
 {
     static auto setup_libevent_logging()
     {
+#ifndef NDEBUG
+        // event_enable_debug_logging(EVENT_DBG_ALL);
+#endif
+
         event_set_log_callback([](int severity, const char* msg) {
             switch (severity)
             {
-                case _EVENT_LOG_ERR:
+                case EVENT_LOG_ERR:
                     log->error("{}", msg);
-                    break;
-                case _EVENT_LOG_WARN:
+                    return;
+                case EVENT_LOG_WARN:
                     log->warn("{}", msg);
-                    break;
-                case _EVENT_LOG_MSG:
+                    return;
+                case EVENT_LOG_MSG:
                     log->info("{}", msg);
-                    break;
-                case _EVENT_LOG_DEBUG:
+                    return;
+                case EVENT_LOG_DEBUG:
                     log->debug("{}", msg);
-                    break;
+                    return;
             }
             std::abort();
         });
@@ -145,7 +149,7 @@ namespace wshttp
         ev.reset(event_new(
                 _loop.get(),
                 -1,
-                0,
+                fixed_interval ? 0 : EV_PERSIST,
                 [](evutil_socket_t, short, void* s) {
                     try
                     {
@@ -194,7 +198,9 @@ namespace wshttp
         static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
 
         log->trace(
-                "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
+                "Starting libevent {}; available backends: {}",
+                event_get_version(),
+                detail::join(ev_methods_avail, ", "));
 
         std::unique_ptr<event_config, decltype(&event_config_free)> ev_conf{event_config_new(), event_config_free};
         event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_PRECISE_TIMER);

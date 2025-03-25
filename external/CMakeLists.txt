@@ -10,7 +10,8 @@ if(GIT_FOUND)
 endif()
 
 # spdlog
-set(SPDLOG_FMT_EXTERNAL_HO ON CACHE BOOL "" FORCE)
+#set(SPDLOG_FMT_EXTERNAL_HO ON CACHE BOOL "" FORCE)
+set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "" FORCE)
 add_subdirectory(spdlog EXCLUDE_FROM_ALL)
 
 # libevent
@@ -28,7 +29,6 @@ add_library(libevent::extra ALIAS event_extra)
 
 # ada
 set(ADA_BENCHMARKS OFF CACHE BOOL "" FORCE)
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(ADA_TOOLS OFF CACHE BOOL "" FORCE)
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(ADA_TESTING OFF CACHE BOOL "" FORCE)
 add_subdirectory(ada EXCLUDE_FROM_ALL)
