@@ -2,86 +2,88 @@
 
 #include "encoding.hpp"
 #include "format.hpp"
+#include "parser.hpp"
 #include "types.hpp"
 
 #include <variant>
 
 namespace wshttp
 {
-    static constexpr size_t URI_FIELDS{8};
-    static constexpr uint16_t HTTPS_PORT{443};
-    static constexpr auto HTTPS_S = "https:"sv;
-    static constexpr auto HTTP_S = "http:"sv;
-
     struct domain_host;
+    // TODO: make UNSUPPORTED = 0
+    enum class SCHEME : uint8_t { HTTP = 0, HTTPS = 1, WS = 2, WSS = 3 };
 
-    struct uri
+    namespace deleters
     {
-        friend class url_parser;
+        struct _evuri
+        {
+            inline void operator()(::evhttp_uri* u) const
+            {
+                if (u)
+                    evhttp_uri_free(u);
+            }
+        };
+    }  // namespace deleters
 
-        uri() = default;
+    using evuri_ptr = std::shared_ptr<evhttp_uri>;
+
+    struct ev_uri
+    {
+        ev_uri() = delete;
+
+        ev_uri(std::string_view input, const url_result_ptr& base = nullptr);
+
+        ~ev_uri();
 
       private:
-        static enum { _scheme, _userinfo, _host, _port, _pathname, _query, _fragment, _href } UF;
+        url_result_ptr _url;
 
-        explicit uri(
-                const std::string_view& _s,
-                const std::string_view& _u,
-                const std::string_view& _h,
-                const std::string_view& _p,
-                const std::string_view& _pn,
-                const std::string_view& _q,
-                const std::string_view& _f,
-                const std::string_view& _hr);
+        evuri_ptr _evuri;
 
-        static uri parse(const char* c, size_t s);
+        // need null-terminated c-strings for SSL and libevent
+        std::string _host;
+        std::string _pathquery;
 
-        std::array<std::string, URI_FIELDS> _fields{};
-        int _p{};
+        SCHEME _scheme;
+        int _port;
+        bool _use_tls;
+
+        void _populate_internals();
+
+        // internal getter
+        ada::url_aggregator& url() { return _url->value(); }
+        const ada::url_aggregator& url() const { return _url->value(); }
 
       public:
-        static uri populate(struct evhttp_request* r);
+        // public getter to construct a new ev_uri using a parsed base url
+        const url_result_ptr& base() { return _url; }
 
-        template <const_span_convertible T>
-        static uri parse(T u)
-        {
-            return uri::parse(reinterpret_cast<const char*>(u.data()), u.size());
-        }
+        domain_host host_domain() const;
 
-        static uri parse(std::string_view u) { return uri::parse(u.data(), u.size()); }
+        const std::string& host() const { return _host; }
+        const std::string& pathquery() const { return _pathquery; }
 
-        int port() const { return _p; }
+        std::string_view scheme() const;
 
-        std::string_view scheme() const { return _fields[_scheme]; }
-        std::string_view userinfo() const { return _fields[_userinfo]; }
-        std::string_view host() const { return _fields[_host]; }
-        std::string_view port_str() const { return _fields[_port]; }
-        std::string_view path() const { return _fields[_pathname]; }
-        std::string_view query() const { return _fields[_query]; }
-        std::string_view fragment() const { return _fields[_fragment]; }
-        std::string_view href() const { return _fields[_href]; }
+        int port() const { return _port; }
 
-        domain_host host_url() const;
-        const char* host_cstr() const;
-        const char* path_cstr() const;
+        bool use_tls() const { return _use_tls; }
 
-        bool use_tls() const { return scheme() == HTTPS_S; }
-        bool is_ipv6() const { return host().starts_with('['); }
+        std::string_view hview() const { return _host; }
+
+        std::string_view view() const;
+
+        auto operator<=>(const ev_uri& u) const { return view() <=> u.view(); }
+        bool operator==(const ev_uri& u) const { return (*this <=> u) == 0; }
 
         std::string to_string() const;
         static constexpr bool to_string_formattable = true;
-
-        bool empty() const { return _fields.empty(); }
-
-        explicit operator bool() const { return !empty(); }
-
-        auto operator<=>(const uri& u) const { return _fields <=> u._fields; }
-        bool operator==(const uri& u) const { return (*this <=> u) == 0; }
     };
 
     struct domain_host final
     {
         friend struct uri;
+        friend struct ev_uri;
 
         domain_host() = delete;
 
@@ -121,7 +123,7 @@ namespace wshttp
 
         in_addr to_inaddr() const;
 
-        bool is_anyaddr() const;
+        constexpr bool is_anyaddr() const;
 
         constexpr auto operator<=>(const ipv4& a) const { return addr <=> a.addr; }
 
@@ -172,9 +174,14 @@ namespace wshttp
         static constexpr bool to_string_formattable = true;
     };
 
-    inline constexpr ipv4 ipv4_anyaddr(0, 0, 0, 0);
+    inline constexpr ipv4 ipv4_anyaddr{0, 0, 0, 0};
 
-    inline constexpr ipv6 ipv6_anyaddr(0, 0, 0, 0, 0, 0, 0, 0);
+    inline constexpr ipv6 ipv6_anyaddr{0, 0, 0, 0, 0, 0, 0, 0};
+
+    constexpr bool ipv4::is_anyaddr() const
+    {
+        return *this == ipv4_anyaddr;
+    }
 
     constexpr bool ipv6::is_anyaddr() const
     {
@@ -188,33 +195,17 @@ namespace wshttp
 
     struct ip_address
     {
-        constexpr ip_address(uint16_t p = 0) : _ip{ipv4_anyaddr}, _port{p}, _is_v4{true} {}
+        constexpr ip_address(uint16_t p = 0) : _ip{ipv4_anyaddr}, _port{p}, _is_v4{true}, _is_anyaddr(true) {}
 
-        explicit ip_address(const struct sockaddr* in)
+        explicit ip_address(const struct sockaddr* in);
+
+        explicit constexpr ip_address(ip_v ip, uint16_t port) : _ip{ip}, _port{port}, _is_v4{!_ip.index()}
         {
-            if (in->sa_family == AF_INET)
-            {
-                auto* in4 = reinterpret_cast<const sockaddr_in*>(in);
-                _ip = ipv4{in4};
-                _port = enc::big_to_host(in4->sin_port);
-                _is_v4 = true;
-            }
-            else if (in->sa_family == AF_INET6)
-            {
-                auto* in6 = reinterpret_cast<const sockaddr_in6*>(in);
-                _ip = ipv6{in6};
-                _port = enc::big_to_host(in6->sin6_port);
-                _is_v4 = false;
-            }
+            if (std::holds_alternative<ipv4>(_ip))
+                _is_anyaddr = _ipv4().is_anyaddr();
             else
-                throw std::runtime_error{"Failed to understand incoming address sa_family: {}"_format(in->sa_family)};
+                _is_anyaddr = _ipv6().is_anyaddr();
         }
-
-        explicit constexpr ip_address(ip_v ip, uint16_t port) : _ip{ip}, _port{port}, _is_v4{!_ip.index()} {}
-
-        template <ip_type T>
-        constexpr explicit ip_address(T ip, uint16_t port) : _ip{ip}, _port{port}, _is_v4{!_ip.index()}
-        {}
 
         ip_address(const ip_address& a) { _copy_internals(a); }
         ip_address(ip_address& a) { _copy_internals(a); }
@@ -238,12 +229,13 @@ namespace wshttp
         uint16_t _port;  // host order
 
         // internal getters w/ no safety checking
-        ipv4& _ipv4() { return std::get<ipv4>(_ip); }
-        const ipv4& _ipv4() const { return std::get<ipv4>(_ip); }
-        ipv6& _ipv6() { return std::get<ipv6>(_ip); }
-        const ipv6& _ipv6() const { return std::get<ipv6>(_ip); }
+        constexpr ipv4& _ipv4() { return std::get<ipv4>(_ip); }
+        constexpr const ipv4& _ipv4() const { return std::get<ipv4>(_ip); }
+        constexpr ipv6& _ipv6() { return std::get<ipv6>(_ip); }
+        constexpr const ipv6& _ipv6() const { return std::get<ipv6>(_ip); }
 
         bool _is_v4{true};
+        bool _is_anyaddr{true};
 
         void _copy_internals(const ip_address& a)
         {
@@ -251,12 +243,13 @@ namespace wshttp
             _ip = ip_t{a._ip};
             _port = a._port;
             _is_v4 = a._is_v4;
+            _is_anyaddr = a._is_anyaddr;
         }
 
         friend struct std::hash<ip_address>;
 
       public:
-        bool is_anyaddr() const;
+        bool is_anyaddr() const { return _is_anyaddr; }
 
         void set_port(uint16_t p) { _port = p; }
 
@@ -341,9 +334,9 @@ namespace std
     };
 
     template <>
-    struct hash<wshttp::uri>
+    struct hash<wshttp::ev_uri>
     {
-        size_t operator()(const wshttp::uri& u) const noexcept { return hash<string_view>{}(u.href()); }
+        size_t operator()(const wshttp::ev_uri& u) const noexcept { return hash<string_view>{}(u.view()); }
     };
 
     template <>

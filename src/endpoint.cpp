@@ -44,26 +44,19 @@ namespace wshttp
     bool endpoint::_request(std::string_view uri, METHOD method)
     {
         return _loop->call_get([&]() {
-            auto _uri = uri::parse(uri);
-            if (not _uri)
-                throw std::invalid_argument{"Failed to parse input url: {}"_format(uri)};
+            auto _uri = ev_uri{uri};
 
-            auto host = _uri.host_url();
+            auto& outbound_set = _outbounds[_uri.host_domain()];
 
-            auto& outbound_set = _outbounds[host];
+            auto [itr, b] = outbound_set.emplace(make_shared<outbound_session>(*this, std::move(_uri)));
 
-            if (outbound_set.contains(_uri))
+            if (not b)
             {
                 log->warn("Outbound session already exists for uri: {}!", _uri);
                 return false;
             }
 
-            auto [itr, b] = outbound_set.emplace(make_shared<outbound_session>(*this, std::move(_uri)));
-
-            if (not b)
-                throw std::invalid_argument{"Outbound session already exists for uri: {}!"_format(uri)};
-
-            (*itr)->make_request(method);
+            (*itr)->initiate_request(method);
 
             return true;
         });
@@ -102,15 +95,19 @@ namespace wshttp
         log->info("Client shutdown complete!");
     }
 
+    void endpoint::test_extract_method(std::string url1, std::string url2, std::string url3)
+    {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        auto ev1 = ev_uri{url1};
+        auto ev2 = ev_uri{url2};
+        auto ev3 = ev_uri{url3};
+        auto ev3_withbase = ev_uri{"/cooking", ev3.base()};
+    }
+
     void endpoint::test_parse_method(std::string url)
     {
-        log->debug("{} called", __PRETTY_FUNCTION__);
-        if (auto u = uri::parse(url))
-        {
-            auto h = u.host_url();
-            log->critical("Domain host ({}) parsed uri: {}", h, u);
-        }
-
+        log->trace("{} called", __PRETTY_FUNCTION__);
         evhttp_uri* evuri = evhttp_uri_parse(url.c_str());
 
         std::string_view scheme, host, path;
@@ -144,30 +141,30 @@ namespace wshttp
             log->warn("Endpoint failed to find listener (bind: {}) to close!", b);
     }
 
-    void endpoint::close_outbound(uri u)
+    void endpoint::close_outbound(ev_uri u)
     {
         assert(in_event_loop());
 
-        if (auto ita = _outbounds.find(u.host_url()); ita != _outbounds.end())
+        if (auto ita = _outbounds.find(u.host_domain()); ita != _outbounds.end())
         {
             if (auto itb = ita->second.find(u); itb != ita->second.end())
             {
                 ita->second.erase(itb);
                 ++_completed_outbounds;
 
-                log->info("Endpoint closed outbound request to remote domain (host: {}): {}", u.host(), u);
+                log->info("Endpoint closed outbound request to remote domain (host: {}): {}", u.hview(), u);
 
                 if (ita->second.empty())
                 {
-                    log->debug("All outbounds completed for remote domain host: {}", u.host());
+                    log->debug("All outbounds completed for remote domain host: {}", u.hview());
                     _outbounds.erase(ita);
                 }
                 return;
             }
-            log->warn("Outbound set to remote domain (host: {}) already cleared finished request: {}", u.host(), u);
+            log->warn("Outbound set to remote domain (host: {}) already cleared finished request: {}", u.hview(), u);
         }
         else
-            log->warn("Endpoint failed to find any outbounds to remote domain (host: {}): {}", u.host(), u);
+            log->warn("Endpoint failed to find any outbounds to remote domain (host: {}): {}", u.hview(), u);
     }
 
     void endpoint::shutdown_endpoint()

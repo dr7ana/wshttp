@@ -108,14 +108,4 @@ namespace wshttp
             return BStr.span();
         }
     }  // namespace literals
-
-    namespace defaults
-    {
-        using namespace wshttp::literals;
-
-        inline constexpr uint16_t DNS_PORT{4400};
-
-        inline constexpr auto ALPN = "h2"_usp;
-    }  // namespace defaults
-
 }  //  namespace wshttp

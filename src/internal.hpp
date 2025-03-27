@@ -1,50 +1,22 @@
 #pragma once
 
-#include "encoding.hpp"
+// #include "encoding.hpp"
 // #include "format.hpp"
 #include "endpoint.hpp"
+#include "parser.hpp"
 
 extern "C" {
 #include <openssl/types.h>
 }
 
-#include <ada.h>
-
 namespace wshttp
 {
     using namespace wshttp::literals;
 
-    using url_result = ada::result<ada::url_aggregator>;
-
-    struct uri;
-
-    class url_parser
-    {
-        std::unique_ptr<std::string> _data{};
-
-        std::unique_ptr<url_result> _res;
-
-        url_parser() = default;
-
-      public:
-        static std::shared_ptr<url_parser> make();
-
-        bool read(std::string input);
-
-        void print_aggregates();
-
-        uri extract();
-
-        url_result& url();
-
-        std::string href_str();
-        std::string_view href_sv();
-
-      private:
-        url_result& _url();  // does no safety checking
-        bool _parse();
-        void _reset();
-    };
+    static constexpr auto HTTPS_S = "https:"sv;
+    static constexpr auto HTTP_S = "http:"sv;
+    static constexpr auto WS_S = "http:"sv;
+    static constexpr auto WSS_S = "http:"sv;
 
     // global parser
     extern std::shared_ptr<url_parser> parser;
@@ -86,6 +58,8 @@ namespace wshttp
                     return "REQUEST CANCELLED"sv;
                 case EVREQ_HTTP_DATA_TOO_LONG:
                     return "DATA TOO LONG"sv;
+                default:
+                    return "UNKNOWN ERR"sv;
             }
         }
 
@@ -212,7 +186,7 @@ namespace wshttp
 
     struct request_callbacks
     {
-        //
+        static void req_error_cb(evhttp_request_error ec, void* user_arg);
     };
 
     struct ws_callbacks

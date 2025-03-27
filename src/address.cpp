@@ -1,6 +1,7 @@
 #include "address.hpp"
 
 #include "internal.hpp"
+// #include "parser.hpp"
 
 namespace wshttp
 {
@@ -10,71 +11,142 @@ namespace wshttp
         {
             auto rv = inet_pton(af, from.c_str(), dest);
 
-            if (rv == 0)  // inet_pton returns this on invalid input
+            if (rv == 0)
                 throw std::invalid_argument{"Unable to parse IP address!"};
             if (rv < 0)
                 throw std::system_error{errno, std::system_category()};
         }
     }  // namespace detail
 
-    uri::uri(
-            const std::string_view& s,
-            const std::string_view& u,
-            const std::string_view& h,
-            const std::string_view& p,
-            const std::string_view& pn,
-            const std::string_view& q,
-            const std::string_view& f,
-            const std::string_view& hr) :
-            _fields{std::string{s},
-                    std::string{u},
-                    std::string{h},
-                    std::string{p},
-                    std::string{pn},
-                    std::string{q},
-                    std::string{f},
-                    std::string{hr}}
-    {
-        if (auto s = scheme(); !s.empty() && (s != HTTP_S and s != HTTPS_S))
-            throw std::invalid_argument{"uri must use protocol scheme HTTP or HTTPS (given: {})"_format(scheme())};
+    static constexpr size_t MAX_URI_LEN{4096};
 
-        if (_fields[_port].empty())
-            _p = use_tls() ? 443 : 80;
+    static constexpr auto tls_port = "443"sv;
+    static constexpr auto notls_port = "80"sv;
+
+    // scheme strings + colon delimited for comparison w/ ada
+    static constexpr auto http_scheme = "http"sv, http_scheme_d = "http:"sv;
+    static constexpr auto https_scheme = "https"sv, https_scheme_d = "https:"sv;
+    static constexpr auto ws_scheme = "ws"sv, ws_scheme_d = "ws:"sv;
+    static constexpr auto wss_scheme = "wss"sv, wss_scheme_d = "wss:"sv;
+
+    ev_uri::ev_uri(std::string_view input, const url_result_ptr& base)
+    {
+        if (input.size() >= MAX_URI_LEN)
+            throw std::invalid_argument{"uri length must be <= 4096 (given:{})"_format(input.size())};
+
+        // parser throws on error
+        _url = parser->parse(input, base);
+
+        if (!_url)
+            throw std::invalid_argument{"uri length must be <= 4096 (given:{})"_format(input.size())};
+
+        _populate_internals();
+        // _evuri.reset(evhttp_uri_parse(input));
+
+        // if (not _evuri)
+        //     throw std::invalid_argument{"evhttp failed to parse uri input: {}"_format(input)};
+
+        // if (auto s = evhttp_uri_get_scheme(_evuri.get()); !s)
+        //     throw std::invalid_argument{"evhttp failed to parse uri scheme (given:{})"_format(input)};
+
+        log->info("parsed url: {}", url().get_href());
+
+        // log->critical("scheme: {}", scheme());
+        // log->critical("userinfo: {}", url().get_username());
+        // log->critical("host: {}", url().get_host());
+        // log->critical("port: {}", url().get_port());
+        // log->critical("special port: {}", url().get_special_port());
+        // log->critical("path: {}", url().get_pathname());
+        // log->critical("query: {}", url().get_search());
+        // log->critical("fragment: {}", url().get_hash());
+    }
+
+    void ev_uri::_populate_internals()
+    {
+        auto s = url().get_protocol();
+
+        if (!s.empty())
+        {
+            if (s == https_scheme_d)
+                _scheme = SCHEME::HTTPS;
+            else if (s == http_scheme_d)
+                _scheme = SCHEME::HTTP;
+            else if (s == wss_scheme_d)
+                _scheme = SCHEME::WSS;
+            else if (s == ws_scheme_d)
+                _scheme = SCHEME::WS;
+            else
+                throw std::invalid_argument{"uri must use protocol schemes HTTP/S or WS/S (given: {})"_format(s)};
+        }
         else
-            _p = std::stoi(_fields[_port]);
+            throw std::invalid_argument{"uri must use protocol schemes HTTP/S or WS/S (given: empty protocol)"};
+
+        _use_tls = s.ends_with('s');
+
+        auto h = url().get_host();
+        if (h.empty())
+            throw std::invalid_argument{"uri cannot have empty host field!"};
+
+        _host += h;
+        _pathquery += url().get_pathname();
+        _pathquery += url().get_search();
+
+        log->trace("uri pathquery: {}", _pathquery);
+
+        auto p = url().get_port();
+
+        if (p.empty())
+        {
+            if (_use_tls)
+            {
+                url().set_port(tls_port);
+                _port = 443;
+            }
+            else
+            {
+                url().set_port(notls_port);
+                _port = 80;
+            }
+        }
+        else
+            _port = std::atoi(p.data());
     }
 
-    uri uri::populate(struct evhttp_request* r)
+    ev_uri::~ev_uri()
     {
-        (void)r;
-
-        // return parser->read(std::string{evhttp_request_get_uri(r)}) ? parser->extract() : uri{};
-        return {};
+        log->trace("{} called", __PRETTY_FUNCTION__);
     }
 
-    uri uri::parse(const char* c, size_t s)
+    domain_host ev_uri::host_domain() const
     {
-        return parser->read(std::string{c, s}) ? parser->extract() : uri{};
+        return domain_host{url().get_host()};
     }
 
-    domain_host uri::host_url() const
+    std::string_view ev_uri::scheme() const
     {
-        return domain_host{host()};
+        switch (_scheme)
+        {
+            case SCHEME::HTTP:
+                return http_scheme;
+            case SCHEME::HTTPS:
+                return https_scheme;
+            case SCHEME::WS:
+                return ws_scheme;
+            case SCHEME::WSS:
+                return wss_scheme;
+            default:
+                [[unlikely]] return "ERROR"sv;
+        }
     }
 
-    const char* uri::host_cstr() const
+    std::string_view ev_uri::view() const
     {
-        return _fields[_host].c_str();
+        return url().get_href();
     }
 
-    const char* uri::path_cstr() const
+    std::string ev_uri::to_string() const
     {
-        return _fields[_pathname].c_str();
-    }
-
-    std::string uri::to_string() const
-    {
-        return _fields[_href];
+        return "uri:[ {} ]"_format(url().get_href());
     }
 
     ipv4::ipv4(const std::string& str)
@@ -85,14 +157,9 @@ namespace wshttp
 
     in_addr ipv4::to_inaddr() const
     {
-        in_addr a;
+        in_addr a{};
         a.s_addr = enc::host_to_big(addr);
         return a;
-    }
-
-    bool ipv4::is_anyaddr() const
-    {
-        return *this == ipv4_anyaddr;
     }
 
     std::string ipv4::to_string() const
@@ -125,8 +192,7 @@ namespace wshttp
     {
         char buf[INET6_ADDRSTRLEN] = {};
 
-        std::array<uint16_t, 8> temp{};
-        std::memcpy(&temp, &addr, sizeof(addr));
+        std::array<uint16_t, 8> temp{addr};
 
         for (int i = 0; i < 8; ++i)
             enc::host_to_big_inplace(temp[i]);
@@ -134,6 +200,26 @@ namespace wshttp
         inet_ntop(AF_INET6, &temp, buf, sizeof(buf));
 
         return "{}"_format(buf);
+    }
+
+    ip_address::ip_address(const struct sockaddr* in)
+    {
+        if (in->sa_family == AF_INET)
+        {
+            auto* in4 = reinterpret_cast<const sockaddr_in*>(in);
+            _ip = ipv4{in4}, _port = enc::big_to_host(in4->sin_port);
+            _is_anyaddr = _ipv4().is_anyaddr();
+            _is_v4 = true;
+        }
+        else if (in->sa_family == AF_INET6)
+        {
+            auto* in6 = reinterpret_cast<const sockaddr_in6*>(in);
+            _ip = ipv6{in6}, _port = enc::big_to_host(in6->sin6_port);
+            _is_anyaddr = _ipv6().is_anyaddr();
+            _is_v4 = false;
+        }
+        else
+            throw std::runtime_error{"Failed to understand incoming address sa_family: {}"_format(in->sa_family)};
     }
 
     ip_address ip_address::from_socket(int fd)
@@ -148,11 +234,6 @@ namespace wshttp
         return ip_address{&bind};
     }
 
-    bool ip_address::is_anyaddr() const
-    {
-        return (_is_v4 ? _ipv4().is_anyaddr() : _ipv6().is_anyaddr()) and not _port;
-    }
-
     std::string ip_address::to_string() const
     {
         return "{}:{}"_format(_is_v4 ? _ipv4().to_string() : _ipv6().to_string(), _port);
@@ -160,6 +241,6 @@ namespace wshttp
 
     std::string path::to_string() const
     {
-        return "[ local:{} | remote:{}]"_format(_local, _remote);
+        return "[ local:{} | remote:{} ]"_format(_local, _remote);
     }
 }  //  namespace wshttp

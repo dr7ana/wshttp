@@ -10,7 +10,6 @@ extern "C" {
 
 namespace wshttp
 {
-    struct domain_host;
     struct dns_callbacks;
     class endpoint;
 

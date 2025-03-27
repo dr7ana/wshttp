@@ -2,37 +2,14 @@
 
 #include "listener.hpp"
 
+#include <bitset>
+
 namespace wshttp
 {
-    enum class SCHEME : uint8_t { HTTP = 0, HTTPS = 1 };
-
     enum class METHOD : uint8_t { UNSUPPORTED = 0, GET = 1, POST = 2, HEAD = 3, PUT = 4, DELETE = 5 };
 
     template <typename T>
     concept supported_method = std::is_same_v<T, METHOD> && requires(T a) { std::to_underlying(a) > 0; };
-
-    struct uri_t
-    {
-        uri_t() = delete;
-
-        uri_t(std::string_view input) : uri_t{input.data(), input.size()} {}
-
-        template <const_span_convertible T>
-        uri_t(T input) : uri_t{reinterpret_cast<const char*>(input.data()), input.size()}
-        {}
-
-        ~uri_t();
-
-      private:
-        uri_t(const char* input, size_t inputlen);
-
-        evhttp_uri* evuri;
-
-        SCHEME _scheme;
-
-      public:
-        std::string_view scheme() const;
-    };
 
     struct hdr
     {
@@ -41,18 +18,96 @@ namespace wshttp
         static constexpr auto* close = "close";
     };
 
+    static constexpr uint8_t bitval{0b00110011};
+    static constexpr std::bitset<8> bset{bitval};
+
+    static_assert(sizeof(bset) == 8);
+
+    /**
+    - case insensitve; lowercase preferred (RFC 9110)
+    evhttp_set_default_content_type
+
+    Some media types
+    - "* / *" (no spaces, in documentation by alpaca)
+    - "application/json"
+    - "application/misc"
+    - "application/octet-stream" (arbitary binary data)
+    - "application/x-www-form-urlencoded"
+    - "application/xml"
+    - "application/zip"
+    - "application/zstd"
+    - "application/ *" (no space)
+    - "image/gif"
+    - "image/jpeg"
+    - "image/png"
+    - "text/css"
+    - "text/csv"
+    - "text/event-stream"
+    - "text/html"
+        + "; charset=utf-8"
+        + "; charset=ISO-8859-1"
+    - "text/plain"
+    - "text/ *" (no space)
+
+    Request-only headers:
+    - "Accept"
+        - accepted media types
+    - "Host"
+        - internal only
+
+    Header fields:
+    - "Connection"
+        - "keep-alive", "close"
+            - client needs to confirm server eechos keep-alive
+            - libevent calls close if needed
+                - if client expects it, no action needed
+                    if not, should probably log early close?
+        - "Upgrade"
+    - "Content-Type"
+        - libevent default: "text/html; charset=ISO-8859-1"
+        - accepted media types
+    - "Content-Length"
+        - added by libevent if absent
+    - "User-Agent"
+    - "X-Request-ID"
+        - must be held onto for alpaca for support requests
+     */
+
+    /** User facing request flags
+        - close: do not persist connection
+
+        User facing header options:
+        - media type
+        - user-agent string
+
+        User facing body options:
+        - media type
+
+     */
+    enum class hdr_flags : uint8_t {};
+
     // wrapper for am evhttp_request
     struct http_request
     {
+        friend class outbound_session;
+
+        http_request() = delete;
+
+        // TODO: dont use const char* after uri redux
+        explicit http_request(evhttp_request* r, const char* host, METHOD m);
+
+      private:
         evhttp_request* req = nullptr;
-
-        http_request(evhttp_request* r, const char* host);
-
-      protected:
         evkeyvalq* buffer = nullptr;
 
+        METHOD method;
+
       public:
-        // void make();
-        //
+        template <typename T, typename U = std::remove_cv_t<T>>
+            requires std::same_as<U, evhttp_request>
+        operator T*()
+        {
+            return req;
+        }
     };
 }  //  namespace wshttp

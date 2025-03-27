@@ -198,9 +198,7 @@ namespace wshttp
         static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
 
         log->trace(
-                "Starting libevent {}; available backends: {}",
-                event_get_version(),
-                detail::join(ev_methods_avail, ", "));
+                "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
 
         std::unique_ptr<event_config, decltype(&event_config_free)> ev_conf{event_config_new(), event_config_free};
         event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_PRECISE_TIMER);

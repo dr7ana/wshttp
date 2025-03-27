@@ -52,30 +52,56 @@ namespace wshttp
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        auto method = detail::get_request_method(req);
+        METHOD method = detail::get_request_method(req);
 
-        switch (method)
-        {
-            case METHOD::UNSUPPORTED:
-                log->warn(
-                        "Received unsupported HTTP request (code:{})",
-                        std::to_underlying(evhttp_request_get_command(req)));
-                return evhttp_send_error(req, HTTP_BADMETHOD, nullptr);
-            case METHOD::GET:
-            case METHOD::POST:
-            case METHOD::HEAD:
-            case METHOD::PUT:
-            case METHOD::DELETE:
-                log->info("Received {} HTTP request from {}", detail::get_method_string(method), _path.remote());
-                break;
-        }
+        std::invoke(handlers[std::to_underlying(method)], this, req);
+
+        // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
+    void inbound_request::recv_unsupported(struct evhttp_request* req)
+    {
+        log->warn("Received unsupported HTTP request (code:{})", std::to_underlying(evhttp_request_get_command(req)));
+        evhttp_send_error(req, HTTP_BADMETHOD, nullptr);
+    }
+
+    void inbound_request::recv_get(struct evhttp_request* req)
+    {
+        log->info("Received GET HTTP request from {}", _path.remote());
+        evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
+    void inbound_request::recv_post(struct evhttp_request* req)
+    {
+        log->info("Received POST HTTP request from {}", _path.remote());
+        return recv_get(req);
+        // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
+    void inbound_request::recv_head(struct evhttp_request* req)
+    {
+        log->info("Received HEAD HTTP request from {}", _path.remote());
+        return recv_get(req);
+        // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
+    void inbound_request::recv_put(struct evhttp_request* req)
+    {
+        log->info("Received PUT HTTP request from {}", _path.remote());
 
         evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
-    outbound_session::outbound_session(endpoint& e, uri u) : _ep{e}, _uri{std::move(u)}, _use_tls{_uri.use_tls()}
+    void inbound_request::recv_delete(struct evhttp_request* req)
     {
-        log->debug("Outbound session (remote: {}) created", _uri.host());
+        log->info("Received DELETE HTTP request from {}", _path.remote());
+        return recv_get(req);
+        // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
+    outbound_session::outbound_session(endpoint& e, ev_uri u) : _ep{e}, _evuri{std::move(u)}, _use_tls{_evuri.use_tls()}
+    {
+        log->debug("Outbound session (remote: {}) created", _evuri.hview());
     }
 
     outbound_session::~outbound_session()
@@ -90,58 +116,80 @@ namespace wshttp
 
         if (not bev)
         {
-            log->critical("Outbound session (remote: {}) failed to create new bufferevent!", _uri.host());
+            log->critical("Outbound session (remote: {}) failed to create new bufferevent!", _evuri.hview());
             return false;
         }
 
-        _evconn.reset(
-                evhttp_connection_base_bufferevent_new(_ep.ev_base(), nullptr, bev, _uri.host_cstr(), _uri.port()));
+        _evconn.reset(evhttp_connection_base_bufferevent_new(
+                _ep.ev_base(), nullptr, bev, _evuri.host().c_str(), _evuri.port()));
 
         if (not _evconn)
         {
-            log->critical("Outbound session (remote: {}) failed to create new evhttp_connection!", _uri.host());
+            log->critical("Outbound session (remote: {}) failed to create new evhttp_connection!", _evuri.hview());
             return false;
         }
 
         return true;
     }
 
-    void outbound_session::initiate_request()
+    std::optional<http_request> outbound_session::make_request(METHOD method)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
+        auto* bev = new_bev();
+
+        if (not bev)
+        {
+            log->critical("Outbound session (remote: {}) failed to create new bufferevent!", _evuri.hview());
+            return std::nullopt;
+        }
+
+        const auto* h = _evuri.host().c_str();
+
+        _evconn.reset(evhttp_connection_base_bufferevent_new(_ep.ev_base(), nullptr, bev, h, _evuri.port()));
+
+        if (not _evconn)
+        {
+            log->critical("Outbound session (remote: {}) failed to create new evhttp_connection!", _evuri.hview());
+            return std::nullopt;
+        }
+
+        std::optional<http_request> newreq = std::nullopt;
+
+        try
+        {
+            newreq = http_request{evhttp_request_new(outbound_callbacks::req_done_cb, this), h, method};
+        }
+        catch (const std::exception& e)
+        {
+            log->critical("http_request construction exception: {}", e.what());
+        }
+
+        return newreq;
     }
 
-    void outbound_session::make_request(METHOD method)
+    void outbound_session::initiate_request(METHOD method)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        if (not make_request_base())
-            return close();
+        // if (not make_request_base())
+        //     return close();
 
-        evhttp_request* req = evhttp_request_new(outbound_callbacks::req_done_cb, this);
+        auto request = make_request(method);
 
-        if (not req)
+        if (not request)
         {
             log->warn("Failed to make new evhttp_request!");
             return close();
-        };
+        }
 
-        evhttp_request_set_error_cb(req, outbound_callbacks::req_error_cb);
-
-        auto* buffer = evhttp_request_get_output_headers(req);
-
-        check_rv(evhttp_add_header(buffer, hdr::host, _uri.host_cstr()), "add host hdr", 0);
-        check_rv(evhttp_add_header(buffer, hdr::conn, hdr::close), "add conn close hdr", 0);
-
-        auto evmethod = detail::get_method_cmd_type(method);
-
-        if (evhttp_make_request(_evconn.get(), req, evmethod, _uri.path_cstr()) != 0)
+        if (evhttp_make_request(
+                    _evconn.get(), *request, detail::get_method_cmd_type(method), _evuri.pathquery().c_str()) != 0)
         {
             log->warn("Failed to dispatch evhttp_request!");
             return close();
         }
 
-        log->info("Successfully dispatched new evhttp_request for: {}", _uri.href());
+        log->info("Successfully dispatched new evhttp_request for {}", _evuri.to_string());
     }
 
     void outbound_session::recv_response(struct evhttp_request* req)
@@ -168,7 +216,7 @@ namespace wshttp
 
         log->info(
                 "Request (remote:{}) received response:[ payload:{}B | code:{} | line: {} ]",
-                _uri.host(),
+                _evuri.hview(),
                 nread,
                 code,
                 line);
@@ -186,9 +234,11 @@ namespace wshttp
 
         log->trace("Created SSL/TLS...");
 
-        check_rv(SSL_set1_host(_ssl, _uri.host_cstr()), "Outbound SSL set server hostname");
+        const auto* h = _evuri.host().c_str();
 
-        SSL_set_tlsext_host_name(_ssl, _uri.host_cstr());
+        check_rv(SSL_set1_host(_ssl, h), "Outbound SSL set server hostname");
+
+        SSL_set_tlsext_host_name(_ssl, h);
 
         return _ssl;
     }
@@ -217,7 +267,7 @@ namespace wshttp
     {
         log->debug("Outbound session signalling endpoint to close listener...");
 
-        _ep.loop()->call_soon([wep = _ep.weak_from_this(), u = _uri]() mutable {
+        _ep.loop()->call_soon([wep = _ep.weak_from_this(), u = std::move(_evuri)]() mutable {
             if (auto ep = wep.lock())
                 ep->close_outbound(std::move(u));
             else

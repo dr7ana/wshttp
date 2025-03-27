@@ -135,6 +135,8 @@ namespace wshttp::test
 
     TEST_CASE("001: Address Types", "[001][address][types]")
     {
+        auto v4_str = "10.0.0.0"s;
+
         auto v4_base = ipv4(10, 0, 0, 0);
         auto v4_base_from_str = ipv4("10.0.0.0"s);
 
@@ -160,6 +162,17 @@ namespace wshttp::test
 
         CHECK(v6_base.to_string() == v6_from_saddr.to_string());
         CHECK(v6_base == v6_from_saddr);
-    }
 
+        constexpr ipv4 ipv4_anyaddr(0, 0, 0, 0);
+        constexpr ipv4 ipv4_not_anyaddr(192, 168, 1, 1);
+
+        CHECK(ipv4_anyaddr.is_anyaddr());
+        CHECK(!ipv4_not_anyaddr.is_anyaddr());
+
+        ip_address v4_anyaddr{ipv4_anyaddr, 0};
+        ip_address v4_not_anyaddr{ipv4_not_anyaddr, 0};
+
+        CHECK(v4_anyaddr.is_anyaddr());
+        CHECK(!v4_not_anyaddr.is_anyaddr());
+    }
 }  // namespace wshttp::test

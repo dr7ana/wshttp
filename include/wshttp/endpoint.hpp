@@ -19,13 +19,6 @@ namespace wshttp
 
     class endpoint final : public std::enable_shared_from_this<endpoint>
     {
-        friend class outbound_session;
-        friend struct ws_session_base;
-        friend class listener;
-        friend class stream;
-        friend class event_loop;
-        friend class dns::server;
-
         template <typename... Opt>
         explicit endpoint(std::shared_ptr<event_loop> ev_loop, Opt&&... opts) :
                 _loop{std::move(ev_loop)},
@@ -87,19 +80,27 @@ namespace wshttp
 
         bool _request(std::string_view uri, METHOD method);
 
+        void handle_ep_opt();
+
       public:
         bool listen(ip_v ip, uint16_t port) { return _listen(ip_address{ip, port}); }
 
         bool listen(uint16_t port) { return _listen(ip_address{port}); }
 
-        // Concept ensures that METHOD::UNSUPPORTED cannot be passed
-        template <supported_method M>
-        bool request(std::string_view uri, M method)
-        {
-            return _request(uri, method);
-        }
+        // template <supported_method M, typename... Arg>
+        // bool request(std::string_view uri, M method, Arg... args)
+        // {
+        //     if constexpr (sizeof...(args))
+        //         ((void)handle_ep_opt(std::forward<Arg>(args)), ...);
+
+        //     return _request(uri, method);
+        // }
+
+        bool request(std::string_view uri, METHOD method) { return _request(uri, method); }
 
         bool test_get(std::string_view uri) { return _request(uri, METHOD::GET); }
+
+        void test_extract_method(std::string url1, std::string url2, std::string url3);
 
         void test_parse_method(std::string url);
 
@@ -126,7 +127,7 @@ namespace wshttp
 
         void close_listener(uint16_t p) { return close_listener(ip_address{p}); }
 
-        void close_outbound(uri u);
+        void close_outbound(ev_uri u);
 
         void shutdown_endpoint();
 
@@ -151,5 +152,12 @@ namespace wshttp
                     "Endpoint construction requires exactly one std::shared_ptr<ssl_creds> "
                     "argument");
         }
+
+        friend class outbound_session;
+        friend struct ws_session_base;
+        friend class listener;
+        friend class stream;
+        friend class event_loop;
+        friend class dns::server;
     };
 }  //  namespace wshttp

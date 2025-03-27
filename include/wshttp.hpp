@@ -7,6 +7,7 @@
 // #include "wshttp/format.hpp"
 #include "wshttp/listener.hpp"
 #include "wshttp/loop.hpp"
+#include "wshttp/parser.hpp"
 #include "wshttp/request.hpp"
 #include "wshttp/session.hpp"
 #include "wshttp/ssl.hpp"

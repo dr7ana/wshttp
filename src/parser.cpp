@@ -1,7 +1,7 @@
+#include "parser.hpp"
+
 #include "address.hpp"
 #include "internal.hpp"
-
-#include <ada.h>
 
 namespace wshttp
 {
@@ -15,116 +15,18 @@ namespace wshttp
         return p;
     }
 
-    uri url_parser::extract()
+    url_result_ptr url_parser::parse(std::string_view input, const url_result_ptr& base)
     {
-        return uri{
-                _url()->get_protocol(),
-                _url()->get_username(),
-                _url()->get_host(),
-                _url()->get_port(),
-                _url()->get_pathname(),
-                _url()->get_search(),
-                _url()->get_hash(),
-                _url()->get_href()};
-    }
+        url_result_ptr ret = nullptr;
+        if (base)
+            ret = std::make_shared<url_result>(ada::parse<ada::url_aggregator>(input, &base->value()));
+        else
+            ret = std::make_shared<url_result>(ada::parse<ada::url_aggregator>(input));
 
-    bool url_parser::_parse()
-    {
-        log->trace("{} called", __PRETTY_FUNCTION__);
-        _res = std::make_unique<url_result>(ada::parse<ada::url_aggregator>(*_data));
+        if (not ret or not *ret)
+            log->warn("Parser failed to parse url input: {}", input);
 
-        if (not _res or not *_res)
-        {
-            log->critical("Parser failed to parse url input: {}", *_data);
-            return false;
-        }
-
-        auto proto = _url()->get_protocol();
-
-        if (proto != HTTP_S and proto != HTTPS_S)
-        {
-            log->critical("Invalid protocol (input: {}); must be either `http` or `https`", proto);
-            return false;
-        }
-
-        if (_url()->get_port() == "")
-        {
-            _url()->set_port(proto == HTTPS_S ? "443" : "80");
-            log->trace("port:{}", _url()->get_port());
-        }
-
-        if (_url()->validate())
-        {
-            log->trace("Successfully parsed input...");
-            return true;
-        }
-
-        log->error("Invalid url input: {}", *_data);
-        return false;
-    }
-
-    bool url_parser::read(std::string input)
-    {
-        _data.reset();
-        _data = std::make_unique<std::string>(std::move(input));
-        if (_parse())
-            return true;
-        _reset();
-        return false;
-    }
-
-    url_result& url_parser::url()
-    {
-        try
-        {
-            return _url();
-        }
-        catch (const std::exception& e)
-        {
-            throw std::runtime_error{"Bad access to url parser result: {}"_format(e.what())};
-        }
-    }
-
-    std::string url_parser::href_str()
-    {
-        return std::string{_res ? _url()->get_href() : ""};
-    }
-
-    std::string_view url_parser::href_sv()
-    {
-        return _res ? _url()->get_href() : ""sv;
-    }
-
-    url_result& url_parser::_url()
-    {
-        return *_res;
-    }
-
-    void url_parser::_reset()
-    {
-        _data.reset();
-        _res.reset();
-    }
-
-    void url_parser::print_aggregates()
-    {
-        if (not _res)
-        {
-            log->critical("Parser has no ada::parse result to reference!");
-            return;
-        }
-
-        auto u = extract();
-
-        log->critical("scheme: {}", u.scheme());
-        log->critical("userinfo: {}", u.userinfo());
-        log->critical("host: {}", u.host());
-        log->critical("port: {}", u.port_str());
-        log->critical("special port: {}", _url()->get_special_port());
-        log->critical("path: {}", u.path());
-        log->critical("query: {}", u.query());
-        log->critical("fragment: {}", u.fragment());
-        log->critical("href: {}", u.href());
+        return ret;
     }
 
 }  //  namespace wshttp
