@@ -46,16 +46,24 @@ namespace wshttp
         void recv_head(struct evhttp_request* req);
         void recv_put(struct evhttp_request* req);
         void recv_delete(struct evhttp_request* req);
+        void recv_options(struct evhttp_request* req);
+        void recv_trace(struct evhttp_request* req);
+        void recv_connect(struct evhttp_request* req);
+        void recv_patch(struct evhttp_request* req);
 
         using request_handler = void (inbound_request::*)(struct evhttp_request* req);
 
-        std::array<request_handler, 6> handlers{
+        std::array<request_handler, 10> handlers{
                 &inbound_request::recv_unsupported,
                 &inbound_request::recv_get,
                 &inbound_request::recv_post,
                 &inbound_request::recv_head,
                 &inbound_request::recv_put,
-                &inbound_request::recv_delete};
+                &inbound_request::recv_delete,
+                &inbound_request::recv_options,
+                &inbound_request::recv_trace,
+                &inbound_request::recv_connect,
+                &inbound_request::recv_patch};
 
       protected:
         void recv_request(struct evhttp_request* req);

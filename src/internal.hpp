@@ -99,17 +99,26 @@ namespace wshttp
                     return "PUT"sv;
                 case METHOD::DELETE:
                     return "DELETE"sv;
+                case METHOD::OPTIONS:
+                    return "OPTIONS"sv;
+                case METHOD::TRACE:
+                    return "TRACE"sv;
+                case METHOD::CONNECT:
+                    return "CONNECT"sv;
+                case METHOD::PATCH:
+                    return "PATCH"sv;
                 case METHOD::UNSUPPORTED:
+                    [[unlikely]] [[fallthrough]];
                 default:
-                    return "UNSUPPORTED"sv;
+                    [[unlikely]] return "UNSUPPORTED"sv;
             }
         }
 
         inline METHOD get_request_method(evhttp_request* req)
         {
-            static constexpr uint8_t BITMASK{0b00011111};
+            static constexpr uint32_t BITMASK{0b111111111};
             return METHOD{static_cast<uint8_t>(
-                    std::bit_width(static_cast<uint8_t>(evhttp_request_get_command(req) & BITMASK)))};
+                    std::bit_width(static_cast<uint32_t>(evhttp_request_get_command(req) & BITMASK)))};
             // static_cast<uint8_t>((std::to_underlying(evhttp_request_get_command(req)) & BITMASK)))};
         }
 
@@ -127,10 +136,19 @@ namespace wshttp
                     return EVHTTP_REQ_PUT;
                 case METHOD::DELETE:
                     return EVHTTP_REQ_DELETE;
+                case METHOD::OPTIONS:
+                    return EVHTTP_REQ_OPTIONS;
+                case METHOD::TRACE:
+                    return EVHTTP_REQ_TRACE;
+                case METHOD::CONNECT:
+                    return EVHTTP_REQ_CONNECT;
+                case METHOD::PATCH:
+                    return EVHTTP_REQ_PATCH;
                 case METHOD::UNSUPPORTED:
                     [[unlikely]] [[fallthrough]];
                 default:
                     [[unlikely]] throw std::runtime_error{"Cannot create evhttp request for unsupported method!"};
+                    break;
             }
         }
 

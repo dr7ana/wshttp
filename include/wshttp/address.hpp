@@ -10,8 +10,11 @@
 namespace wshttp
 {
     struct domain_host;
-    // TODO: make UNSUPPORTED = 0
-    enum class SCHEME : uint8_t { HTTP = 0, HTTPS = 1, WS = 2, WSS = 3 };
+
+    enum class SCHEME : uint8_t { UNSUPPORTED = 0, HTTPS = 1, HTTP = 2, WSS = 3, WS = 4 };
+
+    template <typename T>
+    concept supported_scheme = std::is_same_v<T, SCHEME> && requires(T a) { std::to_underlying(a) > 0; };
 
     namespace deleters
     {

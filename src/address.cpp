@@ -29,6 +29,37 @@ namespace wshttp
     static constexpr auto ws_scheme = "ws"sv, ws_scheme_d = "ws:"sv;
     static constexpr auto wss_scheme = "wss"sv, wss_scheme_d = "wss:"sv;
 
+    static constexpr auto str_to_scheme(std::string_view s)
+    {
+        if (s == https_scheme_d)
+            return SCHEME::HTTPS;
+        else if (s == http_scheme_d)
+            return SCHEME::HTTP;
+        else if (s == wss_scheme_d)
+            return SCHEME::WSS;
+        else if (s == ws_scheme_d)
+            return SCHEME::WS;
+        else
+            return SCHEME::UNSUPPORTED;
+    }
+
+    static constexpr auto scheme_to_str(SCHEME s)
+    {
+        switch (s)
+        {
+            case SCHEME::HTTP:
+                return http_scheme;
+            case SCHEME::HTTPS:
+                return https_scheme;
+            case SCHEME::WS:
+                return ws_scheme;
+            case SCHEME::WSS:
+                return wss_scheme;
+            default:
+                [[unlikely]] return "UNSUPPORTED"sv;
+        }
+    }
+
     ev_uri::ev_uri(std::string_view input, const url_result_ptr& base)
     {
         if (input.size() >= MAX_URI_LEN)
@@ -50,23 +81,23 @@ namespace wshttp
         //     throw std::invalid_argument{"evhttp failed to parse uri scheme (given:{})"_format(input)};
 
         log->info("parsed url: {}", url().get_href());
-
-        // log->critical("scheme: {}", scheme());
-        // log->critical("userinfo: {}", url().get_username());
-        // log->critical("host: {}", url().get_host());
-        // log->critical("port: {}", url().get_port());
-        // log->critical("special port: {}", url().get_special_port());
-        // log->critical("path: {}", url().get_pathname());
-        // log->critical("query: {}", url().get_search());
-        // log->critical("fragment: {}", url().get_hash());
     }
 
     void ev_uri::_populate_internals()
     {
         auto s = url().get_protocol();
 
+        if (s.empty())
+            throw std::invalid_argument{
+                    "uri must use protocol schemes HTTP/S or WS/S (input: {})"_format(url().get_href())};
+
+        _scheme = str_to_scheme(s);
+        if (_scheme == SCHEME::UNSUPPORTED)
+            throw std::invalid_argument{"uri must use protocol schemes HTTP/S or WS/S (given: {})"_format(s)};
+
         if (!s.empty())
         {
+
             if (s == https_scheme_d)
                 _scheme = SCHEME::HTTPS;
             else if (s == http_scheme_d)

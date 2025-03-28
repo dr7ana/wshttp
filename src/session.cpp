@@ -99,6 +99,34 @@ namespace wshttp
         // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
+    void inbound_request::recv_options(struct evhttp_request* req)
+    {
+        log->info("Received OPTIONS HTTP request from {}", _path.remote());
+        return recv_get(req);
+        // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
+    void inbound_request::recv_trace(struct evhttp_request* req)
+    {
+        log->info("Received TRACE HTTP request from {}", _path.remote());
+        return recv_get(req);
+        // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
+    void inbound_request::recv_connect(struct evhttp_request* req)
+    {
+        log->info("Received CONNECT HTTP request from {}", _path.remote());
+        return recv_get(req);
+        // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
+    void inbound_request::recv_patch(struct evhttp_request* req)
+    {
+        log->info("Received PATCH HTTP request from {}", _path.remote());
+        return recv_get(req);
+        // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+    }
+
     outbound_session::outbound_session(endpoint& e, ev_uri u) : _ep{e}, _evuri{std::move(u)}, _use_tls{_evuri.use_tls()}
     {
         log->debug("Outbound session (remote: {}) created", _evuri.hview());

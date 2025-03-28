@@ -6,7 +6,18 @@
 
 namespace wshttp
 {
-    enum class METHOD : uint8_t { UNSUPPORTED = 0, GET = 1, POST = 2, HEAD = 3, PUT = 4, DELETE = 5 };
+    enum class METHOD : uint8_t {
+        UNSUPPORTED = 0,
+        GET = 1,
+        POST = 2,
+        HEAD = 3,
+        PUT = 4,
+        DELETE = 5,
+        OPTIONS = 6,
+        TRACE = 7,
+        CONNECT = 8,
+        PATCH = 9
+    };
 
     template <typename T>
     concept supported_method = std::is_same_v<T, METHOD> && requires(T a) { std::to_underlying(a) > 0; };
@@ -18,13 +29,8 @@ namespace wshttp
         static constexpr auto* close = "close";
     };
 
-    static constexpr uint8_t bitval{0b00110011};
-    static constexpr std::bitset<8> bset{bitval};
-
-    static_assert(sizeof(bset) == 8);
-
     /**
-    - case insensitve; lowercase preferred (RFC 9110)
+    - case insensitive; lowercase preferred (RFC 9110)
     evhttp_set_default_content_type
 
     Some media types
