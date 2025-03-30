@@ -41,22 +41,24 @@ namespace wshttp
         });
     }
 
-    bool endpoint::_request(std::string_view uri, METHOD method)
+    bool endpoint::_request(std::string_view u, METHOD method)
     {
+        // TODO: make a :call(...)
         return _loop->call_get([&]() {
-            auto _uri = ev_uri{uri};
+            auto _uri = uri{u};
+            auto domain = _uri.host_domain();
 
-            auto& outbound_set = _outbounds[_uri.host_domain()];
+            auto [it, b] = _outbound_sessions.try_emplace(domain, nullptr);
 
-            auto [itr, b] = outbound_set.emplace(make_shared<outbound_session>(*this, std::move(_uri)));
-
-            if (not b)
+            if (b)
             {
-                log->warn("Outbound session already exists for uri: {}!", _uri);
-                return false;
+                log->info("Constructing outbound session to new remote domain: {}", domain);
+                it->second = make_shared<outbound_session>(*this, std::move(domain));
             }
+            else
+                log->info("Outbound session already exists for remote domain: {}!", domain);
 
-            (*itr)->initiate_request(method);
+            it->second->initiate_request(std::move(_uri), method);
 
             return true;
         });
@@ -65,7 +67,7 @@ namespace wshttp
     void endpoint::_print_stats()
     {
         auto n_listeners = _listeners.size();
-        auto n_remotes = _outbounds.size();
+        auto n_remotes = _outbound_sessions.size();
         auto n_inbounds = _completed_inbounds.load();
         auto n_outbounds = _completed_outbounds.load();
 
@@ -99,10 +101,10 @@ namespace wshttp
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        auto ev1 = ev_uri{url1};
-        auto ev2 = ev_uri{url2};
-        auto ev3 = ev_uri{url3};
-        auto ev3_withbase = ev_uri{"/cooking", ev3.base()};
+        auto ev1 = uri{url1};
+        auto ev2 = uri{url2};
+        auto ev3 = uri{url3};
+        auto ev3_withbase = uri{"/cooking", ev3.base()};
     }
 
     void endpoint::test_parse_method(std::string url)
@@ -133,38 +135,25 @@ namespace wshttp
     void endpoint::close_listener(ip_address b)
     {
         assert(in_event_loop());
+        log->trace("{} called", __PRETTY_FUNCTION__);
         if (_listeners.erase(b))
-        {
             log->info("Endpoint closed listener on bind: {}", b);
-        }
         else
             log->warn("Endpoint failed to find listener (bind: {}) to close!", b);
     }
 
-    void endpoint::close_outbound(ev_uri u)
+    void endpoint::close_outbound(const domain_host& remote)
     {
         assert(in_event_loop());
 
-        if (auto ita = _outbounds.find(u.host_domain()); ita != _outbounds.end())
+        if (auto it = _outbound_sessions.find(remote); it != _outbound_sessions.end())
         {
-            if (auto itb = ita->second.find(u); itb != ita->second.end())
-            {
-                ita->second.erase(itb);
-                ++_completed_outbounds;
-
-                log->info("Endpoint closed outbound request to remote domain (host: {}): {}", u.hview(), u);
-
-                if (ita->second.empty())
-                {
-                    log->debug("All outbounds completed for remote domain host: {}", u.hview());
-                    _outbounds.erase(ita);
-                }
-                return;
-            }
-            log->warn("Outbound set to remote domain (host: {}) already cleared finished request: {}", u.hview(), u);
+            _outbound_sessions.erase(it);
+            ++_completed_outbounds;
+            log->info("Endpoint closed outbound session to remote: {}", remote.host());
         }
         else
-            log->warn("Endpoint failed to find any outbounds to remote domain (host: {}): {}", u.hview(), u);
+            log->warn("Endpoint failed to find any outbound sessions to remote: {}", remote.host());
     }
 
     void endpoint::shutdown_endpoint()

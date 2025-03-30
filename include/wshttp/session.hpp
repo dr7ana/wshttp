@@ -13,16 +13,9 @@ namespace wshttp
         {
             inline void operator()(::bufferevent* b) const { bufferevent_free(b); }
         };
-
-        struct _evconn
-        {
-            inline void operator()(::evhttp_connection* c) const { evhttp_connection_free(c); }
-        };
     }  // namespace deleters
 
     using bufferevent_ptr = std::unique_ptr<::bufferevent, deleters::_bufferevent>;
-
-    using evconn_ptr = std::unique_ptr<::evhttp_connection, deleters::_evconn>;
 
     struct inbound_request
     {
@@ -74,13 +67,10 @@ namespace wshttp
 
     class outbound_session final : public socket_interface
     {
-        friend class endpoint;
-        friend struct outbound_callbacks;
-        friend struct outbound_ptr_hash;
-        friend struct outbound_ptr_comp;
-
       public:
-        explicit outbound_session(endpoint& e, ev_uri u);
+        // static std::shared_ptr<outbound_session> make_outbound(endpoint& e, uri u);
+
+        explicit outbound_session(endpoint& ep, domain_host remote);
 
         outbound_session() = delete;
 
@@ -88,53 +78,58 @@ namespace wshttp
 
       private:
         endpoint& _ep;
-        evconn_ptr _evconn;
 
+        // initialize in this order
         // uri _uri;
-        ev_uri _evuri;
 
-        const bool _use_tls{true};
+        domain_host _remote;
+
+        std::atomic<request_id_t> _next_request_id{};
+
+        using request_ptr_que = std::list<http_req_ptr>;
+
+        request_ptr_que _request_que;
+
+        std::unordered_map<request_id_t, request_ptr_que::iterator> _request_table;
 
         SSL* new_ssl() override;
 
-        bufferevent* new_bev() override;
-
         void close() override;
 
-        bool make_request_base();
-
-        void recv_response(struct evhttp_request* req);
-
       protected:
-        void initiate_request(METHOD method);
+        bufferevent* new_bev(bool ssl = true) override;
 
-        std::optional<http_request> make_request(METHOD method);
+        void initiate_request(uri u, METHOD method);
+
+        void close_request(request_id_t id);
 
       public:
-        auto operator<=>(const outbound_session& o) const { return _evuri <=> o._evuri; }
+        auto operator<=>(const outbound_session& o) const { return _remote <=> o._remote; }
         bool operator==(const outbound_session& o) const { return (*this <=> o) == 0; }
-        bool operator==(const ev_uri& u) const { return _evuri == u; }
+
+        friend class endpoint;
+        friend struct http_request;
     };
 
     struct outbound_ptr_comp
     {
         using is_transparent = void;
 
-        bool operator()(const std::shared_ptr<outbound_session>& lhs, const std::shared_ptr<outbound_session>& rhs)
-                const noexcept
-        {
-            return *lhs == *rhs;
-        }
+        // bool operator()(const std::shared_ptr<outbound_session>& lhs, const std::shared_ptr<outbound_session>& rhs)
+        //         const noexcept
+        // {
+        //     return *lhs == *rhs;
+        // }
 
-        bool operator()(const std::shared_ptr<outbound_session>& lhs, const ev_uri& rhs) const noexcept
-        {
-            return *lhs == rhs;
-        }
+        // bool operator()(const std::shared_ptr<outbound_session>& lhs, const uri& rhs) const noexcept
+        // {
+        //     return *lhs == rhs;
+        // }
 
-        bool operator()(const ev_uri& lhs, const std::shared_ptr<outbound_session>& rhs) const noexcept
-        {
-            return *rhs == lhs;
-        }
+        // bool operator()(const uri& lhs, const std::shared_ptr<outbound_session>& rhs) const noexcept
+        // {
+        //     return *rhs == lhs;
+        // }
     };
 
     struct outbound_ptr_hash
@@ -142,16 +137,17 @@ namespace wshttp
         using is_transparent = void;
         using transparent_key_eq = outbound_ptr_comp;
 
-        size_t operator()(const std::shared_ptr<outbound_session>& o) const noexcept
-        {
-            return std::hash<ev_uri>{}(o->_evuri);
-        }
+        // size_t operator()(const std::shared_ptr<outbound_session>& o) const noexcept
+        // {
+        //     return std::hash<uri>{}(o->_uri);
+        // }
 
-        size_t operator()(const ev_uri& u) const noexcept { return std::hash<ev_uri>{}(u); }
+        // size_t operator()(const uri& u) const noexcept { return std::hash<uri>{}(u); }
     };
 
     // Holds shared pointers to outbound_session objects, which can be searched using uri's as transparent keys
-    using outbound_ptr_set = std::
-            unordered_set<std::shared_ptr<outbound_session>, outbound_ptr_hash, outbound_ptr_hash::transparent_key_eq>;
+    // using outbound_ptr_set = std::
+    //         unordered_set<std::shared_ptr<outbound_session>, outbound_ptr_hash,
+    //         outbound_ptr_hash::transparent_key_eq>;
 
 }  // namespace wshttp

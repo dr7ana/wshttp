@@ -207,7 +207,7 @@ namespace wshttp
         log->debug("Successfully created inbound WS session for remote: {}", it->first);
     }
 
-    bufferevent* listener::new_bev()
+    bufferevent* listener::new_bev(bool /* ssl */)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
@@ -225,7 +225,6 @@ namespace wshttp
     listener::~listener()
     {
         log->debug("Closing listener on port: {}", _local.port());
-        close();
     }
 
     void listener::close_all()

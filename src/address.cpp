@@ -60,7 +60,7 @@ namespace wshttp
         }
     }
 
-    ev_uri::ev_uri(std::string_view input, const url_result_ptr& base)
+    uri::uri(std::string_view input, const url_result_ptr& base)
     {
         if (input.size() >= MAX_URI_LEN)
             throw std::invalid_argument{"uri length must be <= 4096 (given:{})"_format(input.size())};
@@ -83,7 +83,7 @@ namespace wshttp
         log->info("parsed url: {}", url().get_href());
     }
 
-    void ev_uri::_populate_internals()
+    void uri::_populate_internals()
     {
         auto s = url().get_protocol();
 
@@ -99,11 +99,11 @@ namespace wshttp
         {
 
             if (s == https_scheme_d)
-                _scheme = SCHEME::HTTPS;
+                _scheme = SCHEME::HTTPS, _use_tls = true;
             else if (s == http_scheme_d)
                 _scheme = SCHEME::HTTP;
             else if (s == wss_scheme_d)
-                _scheme = SCHEME::WSS;
+                _scheme = SCHEME::WSS, _use_tls = true;
             else if (s == ws_scheme_d)
                 _scheme = SCHEME::WS;
             else
@@ -111,8 +111,6 @@ namespace wshttp
         }
         else
             throw std::invalid_argument{"uri must use protocol schemes HTTP/S or WS/S (given: empty protocol)"};
-
-        _use_tls = s.ends_with('s');
 
         auto h = url().get_host();
         if (h.empty())
@@ -141,19 +139,21 @@ namespace wshttp
         }
         else
             _port = std::atoi(p.data());
+
+        log->trace("port set to {}", url().get_port());
     }
 
-    ev_uri::~ev_uri()
+    uri::~uri()
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
     }
 
-    domain_host ev_uri::host_domain() const
+    domain_host uri::host_domain() const
     {
-        return domain_host{url().get_host()};
+        return domain_host{url().get_host(), _port};
     }
 
-    std::string_view ev_uri::scheme() const
+    std::string_view uri::scheme() const
     {
         switch (_scheme)
         {
@@ -170,14 +170,19 @@ namespace wshttp
         }
     }
 
-    std::string_view ev_uri::view() const
+    std::string_view uri::view() const
     {
         return url().get_href();
     }
 
-    std::string ev_uri::to_string() const
+    std::string uri::to_string() const
     {
         return "uri:[ {} ]"_format(url().get_href());
+    }
+
+    std::string domain_host::to_string() const
+    {
+        return "{}:{}"_format(_host, _port);
     }
 
     ipv4::ipv4(const std::string& str)

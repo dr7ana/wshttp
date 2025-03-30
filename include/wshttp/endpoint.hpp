@@ -65,8 +65,9 @@ namespace wshttp
         std::unordered_map<ip_address, std::shared_ptr<listener>> _listeners{};
 
         // sessions managing outbound https connections
-        std::unordered_map<domain_host, outbound_ptr_set> _outbounds{};
+        std::unordered_map<domain_host, std::shared_ptr<outbound_session>> _outbound_sessions{};
 
+        // debug counters
         std::atomic<uint64_t> _completed_inbounds{};
         std::atomic<uint64_t> _completed_outbounds{};
 
@@ -127,7 +128,7 @@ namespace wshttp
 
         void close_listener(uint16_t p) { return close_listener(ip_address{p}); }
 
-        void close_outbound(ev_uri u);
+        void close_outbound(const domain_host& remote);
 
         void shutdown_endpoint();
 

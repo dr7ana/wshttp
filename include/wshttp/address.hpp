@@ -28,21 +28,29 @@ namespace wshttp
         };
     }  // namespace deleters
 
-    using evuri_ptr = std::shared_ptr<evhttp_uri>;
+    struct uri;
 
-    struct ev_uri
+    using uri_ptr = std::shared_ptr<uri>;
+
+    using evuri_ptr = std::shared_ptr<::evhttp_uri>;
+
+    struct uri
     {
-        ev_uri() = delete;
+        uri() = delete;
 
-        ev_uri(std::string_view input, const url_result_ptr& base = nullptr);
+        uri(std::string_view input, const url_result_ptr& base = nullptr);
 
-        ~ev_uri();
+        // TODO: ctors/ops
+        // uri(uri&& u);
+
+        ~uri();
 
       private:
         url_result_ptr _url;
 
         evuri_ptr _evuri;
 
+        // TODO: make _host into a domain_host object
         // need null-terminated c-strings for SSL and libevent
         std::string _host;
         std::string _pathquery;
@@ -58,7 +66,7 @@ namespace wshttp
         const ada::url_aggregator& url() const { return _url->value(); }
 
       public:
-        // public getter to construct a new ev_uri using a parsed base url
+        // public getter to construct a new uri using a parsed base url
         const url_result_ptr& base() { return _url; }
 
         domain_host host_domain() const;
@@ -76,8 +84,8 @@ namespace wshttp
 
         std::string_view view() const;
 
-        auto operator<=>(const ev_uri& u) const { return view() <=> u.view(); }
-        bool operator==(const ev_uri& u) const { return (*this <=> u) == 0; }
+        auto operator<=>(const uri& u) const { return view() <=> u.view(); }
+        bool operator==(const uri& u) const { return (*this <=> u) == 0; }
 
         std::string to_string() const;
         static constexpr bool to_string_formattable = true;
@@ -85,25 +93,26 @@ namespace wshttp
 
     struct domain_host final
     {
-        friend struct uri;
-        friend struct ev_uri;
-
         domain_host() = delete;
 
       protected:
-        domain_host(std::string_view u) : _host{u} {}
+        domain_host(std::string_view u, int p) : _host{u}, _port{p} {}
 
-        std::string _host{};
+        const std::string _host{};
+        const int _port{};
 
       public:
         std::string_view host() const { return _host; }
         const char* host_cstr() const { return _host.c_str(); }
+        int port() const { return _port; }
 
-        auto operator<=>(const domain_host& d) const { return _host <=> d._host; }
+        auto operator<=>(const domain_host& d) const { return std::tie(_host, _port) <=> std::tie(d._host, d._port); }
         bool operator==(const domain_host& d) const { return (*this <=> d) == 0; }
 
-        std::string to_string() const { return _host; }
+        std::string to_string() const;
         static constexpr bool to_string_formattable = true;
+
+        friend struct uri;
     };
 
     struct ipv4
@@ -337,14 +346,19 @@ namespace std
     };
 
     template <>
-    struct hash<wshttp::ev_uri>
+    struct hash<wshttp::uri>
     {
-        size_t operator()(const wshttp::ev_uri& u) const noexcept { return hash<string_view>{}(u.view()); }
+        size_t operator()(const wshttp::uri& u) const noexcept { return hash<string_view>{}(u.view()); }
     };
 
     template <>
     struct hash<wshttp::domain_host>
     {
-        size_t operator()(const wshttp::domain_host& u) const noexcept { return hash<string_view>{}(u.host()); }
+        size_t operator()(const wshttp::domain_host& u) const noexcept
+        {
+            auto h = hash<string_view>{}(u.host());
+            h ^= hash<int>{}(u.port()) + wshttp::inverse_golden_ratio + (h << 7) + (h >> 3);
+            return h;
+        }
     };
 }  //  namespace std

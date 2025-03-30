@@ -14,7 +14,7 @@ namespace wshttp
     {
       protected:
         virtual SSL* new_ssl() = 0;
-        virtual bufferevent* new_bev() = 0;
+        virtual bufferevent* new_bev(bool) = 0;
         virtual void close() = 0;
     };
 
@@ -81,7 +81,7 @@ namespace wshttp
 
         void ws_request(struct evhttp_request* req);
 
-        bufferevent* new_bev() override;
+        bufferevent* new_bev(bool ssl = true) override;
 
         SSL* new_ssl() override;
 

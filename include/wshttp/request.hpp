@@ -92,28 +92,74 @@ namespace wshttp
      */
     enum class hdr_flags : uint8_t {};
 
+    namespace deleters
+    {
+        struct _evconn
+        {
+            inline void operator()(::evhttp_connection* c) const { evhttp_connection_free(c); }
+        };
+
+        struct _evreq
+        {
+            inline void operator()(::evhttp_request* r) const
+            {
+                if (r and evhttp_request_is_owned(r))
+                    evhttp_request_free(r);
+            }
+        };
+    }  // namespace deleters
+
+    struct http_request;
+    class outbound_session;
+
+    using http_req_ptr = std::unique_ptr<http_request>;
+    using evreq_ptr = std::unique_ptr<evhttp_request, deleters::_evreq>;
+    using evconn_ptr = std::unique_ptr<::evhttp_connection, deleters::_evconn>;
+
+    using request_id_t = size_t;
+
     // wrapper for am evhttp_request
     struct http_request
     {
-        friend class outbound_session;
-
         http_request() = delete;
 
-        // TODO: dont use const char* after uri redux
-        explicit http_request(evhttp_request* r, const char* host, METHOD m);
+        static http_req_ptr construct(outbound_session& s, request_id_t id, uri u, METHOD m);
+
+      protected:
+        explicit http_request(outbound_session& s, request_id_t id, uri u, METHOD m);
 
       private:
-        evhttp_request* req = nullptr;
-        evkeyvalq* buffer = nullptr;
+        const request_id_t _request_id;
 
-        METHOD method;
+        outbound_session& _session;
+
+        evreq_ptr _req;
+        evkeyvalq* _buffer = nullptr;
+
+        // new fields
+        evconn_ptr _evconn;
+        uri _uri;
+
+        METHOD _method;
+
+        void signal_close(bool close_session = false);
 
       public:
+        void recv_response(struct evhttp_request* req);
+
+        auto operator<=>(const http_request& req)
+        {
+            return std::tie(_request_id, _uri) <=> std::tie(req._request_id, req._uri);
+        }
+        bool operator==(const http_request& req) { return (*this <=> req) == 0; }
+
         template <typename T, typename U = std::remove_cv_t<T>>
             requires std::same_as<U, evhttp_request>
         operator T*()
         {
-            return req;
+            return _req;
         }
+
+        friend class outbound_session;
     };
 }  //  namespace wshttp

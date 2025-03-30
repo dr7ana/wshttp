@@ -181,9 +181,9 @@ namespace wshttp
 
     struct outbound_callbacks
     {
-        static void req_done_cb(struct evhttp_request* req, void* user_arg);
+        // static void req_done_cb(struct evhttp_request* req, void* user_arg);
 
-        static void req_error_cb(evhttp_request_error ec, void* user_arg);
+        // static void req_error_cb(evhttp_request_error ec, void* user_arg);
     };
 
     struct listen_callbacks
@@ -204,6 +204,8 @@ namespace wshttp
 
     struct request_callbacks
     {
+        static void req_done_cb(struct evhttp_request* req, void* user_arg);
+
         static void req_error_cb(evhttp_request_error ec, void* user_arg);
     };
 
