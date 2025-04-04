@@ -41,24 +41,50 @@ namespace wshttp
         });
     }
 
-    bool endpoint::_request(std::string_view u, METHOD method)
+    std::shared_ptr<outbound_session> endpoint::initiate_session(std::string_view u, std::optional<session_opts> opts)
     {
-        // TODO: make a :call(...)
-        return _loop->call_get([&]() {
-            auto _uri = uri{u};
-            auto domain = _uri.host_domain();
+        return _loop->call_get([&]() -> std::shared_ptr<outbound_session> {
+            auto _uri = uri::make(u);
+            if (not _uri)
+            {
+                log->warn("Outbound session must be initiated to a valid remote host (given: {})", u);
+                return nullptr;
+            }
 
-            auto [it, b] = _outbound_sessions.try_emplace(domain, nullptr);
+            auto [it, b] = _outbound_sessions.try_emplace(_uri->host_domain(), nullptr);
 
             if (b)
             {
-                log->info("Constructing outbound session to new remote domain: {}", domain);
-                it->second = make_shared<outbound_session>(*this, std::move(domain));
+                log->info("Constructing outbound session to new remote domain: {}", _uri->hview());
+                it->second = make_shared<outbound_session>(*this, std::move(_uri), std::move(opts));
             }
             else
-                log->info("Outbound session already exists for remote domain: {}!", domain);
+            {
+                log->info("Outbound session already exists for remote domain: {}!", _uri->hview());
+                return nullptr;
+            }
 
-            it->second->initiate_request(std::move(_uri), method);
+            return it->second;
+        });
+    }
+
+    bool endpoint::_request(std::string_view u, METHOD method, std::optional<session_opts> opts)
+    {
+        // TODO: make a :call(...)
+        return _loop->call_get([&]() {
+            auto _uri = uri::make(u);
+
+            auto [it, b] = _outbound_sessions.try_emplace(_uri->host_domain(), nullptr);
+
+            if (b)
+            {
+                log->info("Constructing outbound session to new remote domain: {}", _uri->hview());
+                it->second = make_shared<outbound_session>(*this, std::move(_uri), std::move(opts));
+            }
+            else
+                log->info("Outbound session already exists for remote domain: {}!", _uri->hview());
+
+            it->second->request(method);
 
             return true;
         });

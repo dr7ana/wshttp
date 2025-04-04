@@ -1,6 +1,7 @@
 #pragma once
 
 #include <wshttp.hpp>
+#include <wshttp/format.hpp>
 
 #include <CLI/CLI.hpp>
 

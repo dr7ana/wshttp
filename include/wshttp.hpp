@@ -2,11 +2,12 @@
 
 #include "wshttp/address.hpp"
 #include "wshttp/dns.hpp"
-#include "wshttp/encoding.hpp"
+// #include "wshttp/encoding.hpp"
 #include "wshttp/endpoint.hpp"
 // #include "wshttp/format.hpp"
 #include "wshttp/listener.hpp"
 #include "wshttp/loop.hpp"
+#include "wshttp/opts.hpp"
 #include "wshttp/parser.hpp"
 #include "wshttp/request.hpp"
 #include "wshttp/session.hpp"

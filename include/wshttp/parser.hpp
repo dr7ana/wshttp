@@ -7,7 +7,8 @@
 namespace wshttp
 {
     using url_result = ada::result<ada::url_aggregator>;
-    using url_result_ptr = std::shared_ptr<url_result>;
+    // using url_result_ptr = std::shared_ptr<url_result>;
+    using url_result_ptr = std::unique_ptr<url_result>;
 
     class url_parser
     {

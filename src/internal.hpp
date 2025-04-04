@@ -18,6 +18,12 @@ namespace wshttp
     static constexpr auto WS_S = "http:"sv;
     static constexpr auto WSS_S = "http:"sv;
 
+    static constexpr auto default_bev_flags{BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE};
+
+    static constexpr ev_uint32_t default_evhttp_flags{
+            EVHTTP_REQ_GET | EVHTTP_REQ_POST | EVHTTP_REQ_HEAD | EVHTTP_REQ_PUT | EVHTTP_REQ_DELETE |
+            EVHTTP_REQ_OPTIONS | EVHTTP_REQ_CONNECT | EVHTTP_REQ_PATCH};
+
     // global parser
     extern std::shared_ptr<url_parser> parser;
 
@@ -61,6 +67,12 @@ namespace wshttp
                 default:
                     return "UNKNOWN ERR"sv;
             }
+        }
+
+        template <typename T>
+        T* get_arg(void* user_arg)
+        {
+            return static_cast<T*>(user_arg);
         }
 
         void setup_ssl_library();
@@ -181,7 +193,7 @@ namespace wshttp
 
     struct outbound_callbacks
     {
-        // static void req_done_cb(struct evhttp_request* req, void* user_arg);
+        static void req_done_cb(struct evhttp_request* req, void* user_arg);
 
         // static void req_error_cb(evhttp_request_error ec, void* user_arg);
     };

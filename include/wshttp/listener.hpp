@@ -20,7 +20,7 @@ namespace wshttp
 
     class app_context;
     class endpoint;
-    struct inbound_request;
+    struct inbound_session;
     struct ws_session_base;
 
     namespace deleters
@@ -41,7 +41,7 @@ namespace wshttp
 
     class listener final : public socket_interface
     {
-        friend struct inbound_request;
+        friend struct inbound_session;
         friend struct ws_session_base;
         friend class endpoint;
         friend class event_loop;
@@ -65,7 +65,7 @@ namespace wshttp
         evhttp_ptr _evh;
 
         // key: remote address, value: session ptr
-        std::unordered_map<ip_address, std::shared_ptr<inbound_request>> _requests;
+        std::unordered_map<ip_address, std::shared_ptr<inbound_session>> _requests;
 
         // TODO: unify requests and ws sessions with base class to use the same map
         std::unordered_map<ip_address, std::shared_ptr<ws_session_base>> _sessions;

@@ -1,9 +1,11 @@
 #include "utils.hpp"
 
+using namespace wshttp;
+
 int main(int argc, char* argv[])
 {
     std::signal(SIGPIPE, SIG_IGN);
-    // std::signal(SIGINT, wshttp::signal_handler);
+    // std::signal(SIGINT, signal_handler);
 
     CLI::App cli{"WSHTTP test endpoint"};
 
@@ -26,25 +28,40 @@ int main(int argc, char* argv[])
 
     wshttp::log->set_level(log_level);
 
-    std::shared_ptr<wshttp::ssl_creds> creds;
+    std::shared_ptr<ssl_creds> creds;
 
-    auto loop = wshttp::event_loop::make();
-    creds = (!key_path.empty() && !cert_path.empty()) ? wshttp::ssl_creds::make(key_path, cert_path)
-                                                      : wshttp::ssl_creds::make();
+    auto loop = event_loop::make();
+    creds = (!key_path.empty() && !cert_path.empty()) ? ssl_creds::make(key_path, cert_path) : ssl_creds::make();
 
-    std::shared_ptr<wshttp::endpoint> ep;
+    std::shared_ptr<endpoint> ep;
+
+    session_opts sopts{[](std::vector<char> buf) {
+        // std::fwrite(buf.data(), buf.size(), 1, stderr);
+        wshttp::log->info("User supplied session callback invoked! Received {}B payload", buf.size());
+    }};
+
+    request_opts ropts{[](std::vector<char> buf) {
+        // std::fwrite(buf.data(), buf.size(), 1, stderr);
+        wshttp::log->info("User supplied request callback invoked! Received {}B payload", buf.size());
+    }};
 
     try
     {
-        ep = wshttp::endpoint::make(loop, creds);
+        ep = endpoint::make(loop, creds);
 
         ep->listen(5544);
         ep->listen(5545);
         ep->listen(5546);
+
+        auto session = ep->initiate_session("https://www.google.com", std::move(sopts));
+
         // ep->test_extract_method("https://www.google.com", "https://www.reddit.com", "https://www.nytimes.com");
         // ep->test_parse_method("https://www.google.com");
+        session->request(METHOD::GET);
+        session->request(METHOD::GET, std::move(ropts));
+        session->request(METHOD::GET, request_opts{hdr_flags::CLOSE});
         // ep->test_get("https://www.google.com");
-        ep->test_get("http://www.google.com");
+        // ep->test_get("http://www.google.com");
     }
     catch (const std::exception& e)
     {

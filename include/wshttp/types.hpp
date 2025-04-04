@@ -18,9 +18,9 @@ namespace wshttp
         }
     }  // namespace types
 
-    using cspan = const_span<char>;
-    using uspan = const_span<unsigned char>;
-    using bspan = const_span<std::byte>;
+    using cspan = std::span<const char>;
+    using uspan = std::span<const unsigned char>;
+    using bspan = std::span<const std::byte>;
 
     template <typename T>
     concept const_span_type = std::same_as<T, cspan> || std::same_as<T, uspan> || std::same_as<T, bspan>;
@@ -29,22 +29,20 @@ namespace wshttp
     concept const_span_convertible =
             std::convertible_to<T, cspan> || std::convertible_to<T, uspan> || std::convertible_to<T, bspan>;
 
-    template <typename R, typename T>
-    concept const_contiguous_range_t = std::ranges::contiguous_range<const R> &&
-                                       std::same_as<std::remove_cvref_t<T>, std::ranges::range_value_t<const R>>;
-
     inline namespace operators
     {
         inline namespace span
         {
-            template <typename T, size_t N, const_contiguous_range_t<T> R>
-            bool operator==(const_span<T, N> lhs, const R& rhs)
+            template <const_span_type T, const_span_convertible R>
+                requires std::same_as<typename T::value_type, typename R::value_type>
+            bool operator==(T lhs, const R& rhs)
             {
                 return std::ranges::equal(lhs, rhs);
             }
 
-            template <typename T, size_t N, const_contiguous_range_t<T> R>
-            auto operator<=>(const_span<T, N> lhs, const R& rhs)
+            template <const_span_type T, const_span_convertible R>
+                requires std::same_as<typename T::value_type, typename R::value_type>
+            auto operator<=>(T lhs, const R& rhs)
             {
                 return std::lexicographical_compare_three_way(
                         lhs.begin(), lhs.end(), std::ranges::begin(rhs), std::ranges::end(rhs));
@@ -66,7 +64,7 @@ namespace wshttp
             static constexpr size_t SIZE{N - 1};
             T arr[N];
 
-            constexpr auto span() const { return const_span<T, SIZE>{arr, SIZE}; }
+            constexpr auto span() const { return std::span<const T, SIZE>{arr, SIZE}; }
         };
 
         template <size_t N>

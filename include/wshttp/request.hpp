@@ -1,33 +1,36 @@
 #pragma once
 
 #include "listener.hpp"
+#include "opts.hpp"
 
 #include <bitset>
 
 namespace wshttp
 {
-    enum class METHOD : uint8_t {
-        UNSUPPORTED = 0,
-        GET = 1,
-        POST = 2,
-        HEAD = 3,
-        PUT = 4,
-        DELETE = 5,
-        OPTIONS = 6,
-        TRACE = 7,
-        CONNECT = 8,
-        PATCH = 9
-    };
-
-    template <typename T>
-    concept supported_method = std::is_same_v<T, METHOD> && requires(T a) { std::to_underlying(a) > 0; };
-
-    struct hdr
+    namespace deleters
     {
-        static constexpr auto* host = "Host";
-        static constexpr auto* conn = "Connection";
-        static constexpr auto* close = "close";
-    };
+        struct _evconn
+        {
+            inline void operator()(::evhttp_connection* c) const { evhttp_connection_free(c); }
+        };
+
+        struct _evreq
+        {
+            inline void operator()(::evhttp_request* r) const { evhttp_request_free(r); }
+        };
+    }  // namespace deleters
+
+    struct http_request;
+    class outbound_session;
+
+    using http_req_ptr = std::unique_ptr<http_request>;
+
+    using evconn_ptr = std::unique_ptr<::evhttp_connection, deleters::_evconn>;
+
+    using evreq_ptr = std::unique_ptr<evhttp_request, deleters::_evreq>;
+    using request_ptr_list = std::list<http_req_ptr>;
+
+    using request_id_t = size_t;
 
     /**
     - case insensitive; lowercase preferred (RFC 9110)
@@ -40,12 +43,12 @@ namespace wshttp
     - "application/octet-stream" (arbitary binary data)
     - "application/x-www-form-urlencoded"
     - "application/xml"
-    - "application/zip"
-    - "application/zstd"
-    - "application/ *" (no space)
-    - "image/gif"
-    - "image/jpeg"
-    - "image/png"
+        - "application/zip"
+        - "application/zstd"
+        - "application/ *" (no space)
+        - "image/gif"
+        - "image/jpeg"
+        - "image/png"
     - "text/css"
     - "text/csv"
     - "text/event-stream"
@@ -53,7 +56,7 @@ namespace wshttp
         + "; charset=utf-8"
         + "; charset=ISO-8859-1"
     - "text/plain"
-    - "text/ *" (no space)
+        - "text/ *" (no space)
 
     Request-only headers:
     - "Accept"
@@ -90,76 +93,114 @@ namespace wshttp
         - media type
 
      */
-    enum class hdr_flags : uint8_t {};
-
-    namespace deleters
-    {
-        struct _evconn
-        {
-            inline void operator()(::evhttp_connection* c) const { evhttp_connection_free(c); }
-        };
-
-        struct _evreq
-        {
-            inline void operator()(::evhttp_request* r) const
-            {
-                if (r and evhttp_request_is_owned(r))
-                    evhttp_request_free(r);
-            }
-        };
-    }  // namespace deleters
-
-    struct http_request;
-    class outbound_session;
-
-    using http_req_ptr = std::unique_ptr<http_request>;
-    using evreq_ptr = std::unique_ptr<evhttp_request, deleters::_evreq>;
-    using evconn_ptr = std::unique_ptr<::evhttp_connection, deleters::_evconn>;
-
-    using request_id_t = size_t;
 
     // wrapper for am evhttp_request
     struct http_request
     {
         http_request() = delete;
 
-        static http_req_ptr construct(outbound_session& s, request_id_t id, uri u, METHOD m);
+        static http_req_ptr construct(
+                outbound_session& s,
+                request_id_t id,
+                uri_ptr u,
+                METHOD m,
+                std::optional<request_opts> opts = std::nullopt);
+
+        ~http_request();
 
       protected:
-        explicit http_request(outbound_session& s, request_id_t id, uri u, METHOD m);
+        // explicit http_request(outbound_session& s, request_id_t id, uri_ptr u, METHOD m);
+
+        explicit http_request(
+                outbound_session& s,
+                request_id_t id,
+                uri_ptr u,
+                METHOD m,
+                std::optional<request_opts> opts = std::nullopt);
 
       private:
         const request_id_t _request_id;
 
+        // TODO: make this a reference to a socket_interface for the http_request base
+        // Keep in order, hook made by generator
         outbound_session& _session;
+        request_data_cb _hook;  // TODO: outbound only
 
         evreq_ptr _req;
-        evkeyvalq* _buffer = nullptr;
-
-        // new fields
-        evconn_ptr _evconn;
-        uri _uri;
+        // uri _uri;
+        uri_ptr _uri;
 
         METHOD _method;
+        content_type _type;
+
+        std::atomic<bool> _close_session_on_complete{false};
+
+        void populate_internals();
+
+        void populate_internals(request_opts opts);
 
         void signal_close(bool close_session = false);
 
-      public:
-        void recv_response(struct evhttp_request* req);
+        void set_close_on_complete();
 
-        auto operator<=>(const http_request& req)
+      public:
+        void test_method();
+
+        void request_recv(struct evhttp_request* req);
+
+        auto operator<=>(const http_request& req) const
         {
-            return std::tie(_request_id, _uri) <=> std::tie(req._request_id, req._uri);
+            return std::tie(_request_id, *_uri) <=> std::tie(req._request_id, *req._uri);
         }
-        bool operator==(const http_request& req) { return (*this <=> req) == 0; }
+        bool operator==(const http_request& req) const { return (*this <=> req) == 0; }
+        bool operator==(evhttp_request* req) const { return _req.get() == req; }
 
         template <typename T, typename U = std::remove_cv_t<T>>
             requires std::same_as<U, evhttp_request>
         operator T*()
         {
-            return _req;
+            return _req.get();
         }
 
         friend class outbound_session;
+        friend struct request_ptr_hash;
     };
+
+    inline auto hash_evreq_ptr = [](evhttp_request* r) noexcept -> size_t {
+        return reinterpret_cast<std::uintptr_t>(r);
+    };
+
+    struct request_ptr_comp
+    {
+        using is_transparent = void;
+
+        bool operator()(const http_req_ptr& lhs, const http_req_ptr& rhs) const noexcept { return *lhs == *rhs; }
+
+        bool operator()(const http_req_ptr& lhs, evhttp_request* rhs) const noexcept { return *lhs == rhs; }
+
+        bool operator()(evhttp_request* lhs, const http_req_ptr& rhs) const noexcept { return lhs == *rhs; }
+    };
+
+    struct request_ptr_hash
+    {
+        using is_transparent = void;
+        using transparent_key_eq = request_ptr_comp;
+
+        size_t operator()(const http_req_ptr& r) const noexcept { return hash_evreq_ptr(r->_req.get()); }
+
+        size_t operator()(evhttp_request* r) const noexcept { return hash_evreq_ptr(r); }
+    };
+
+    // Holds unique pointers to http request objects; owning endpoints can search based on evhttp_request pointer hash
+    using request_ptr_set = std::unordered_set<http_req_ptr, request_ptr_hash, request_ptr_hash::transparent_key_eq>;
+
 }  //  namespace wshttp
+
+namespace std
+{
+    // template <>
+    // struct hash<wshttp::http_req_ptr>
+    // {
+    //     size_t operator()(const wshttp::http_req_ptr& r) const noexcept { return wshttp::hash_evreq_ptr(r->_req); }
+    // };
+}  // namespace std

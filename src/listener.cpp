@@ -96,6 +96,7 @@ namespace wshttp
         evhttp_set_bevcb(_evh.get(), listen_callbacks::bev_cb, this);
         evhttp_set_newreqcb(_evh.get(), listen_callbacks::newreq_cb, this);
         evhttp_set_errorcb(_evh.get(), listen_callbacks::error_cb, this);
+        evhttp_set_allowed_methods(_evh.get(), default_evhttp_flags);
 
         evhttp_bound_socket* handle = evhttp_bind_listener(_evh.get(), _tcp.get());
 
@@ -126,7 +127,7 @@ namespace wshttp
 
         try
         {
-            it->second = _ep.template make_shared<inbound_request>(
+            it->second = _ep.template make_shared<inbound_session>(
                     /* *this,  */ std::move(remote), detail::get_request_fd(req));
         }
         catch (const std::exception& e)
@@ -212,11 +213,7 @@ namespace wshttp
         log->trace("{} called", __PRETTY_FUNCTION__);
 
         auto bev = bufferevent_openssl_socket_new(
-                _ep.ev_base(),
-                -1,
-                new_ssl(),
-                BUFFEREVENT_SSL_ACCEPTING,
-                BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_THREADSAFE);
+                _ep.ev_base(), -1, new_ssl(), BUFFEREVENT_SSL_ACCEPTING, default_bev_flags);
 
         bufferevent_ssl_set_flags(bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
         return bev;

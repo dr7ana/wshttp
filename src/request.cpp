@@ -5,6 +5,45 @@
 
 namespace wshttp
 {
+    struct hdr_fields
+    {
+        static constexpr auto* accept = "Accept";
+        static constexpr auto* close = "close";
+        static constexpr auto* conn = "Connection";
+        static constexpr auto* host = "Host";
+    };
+
+    static constexpr auto content_type_string(content_type t)
+    {
+        switch (t)
+        {
+            default:
+            case content_type::WILDCARD:
+                return "*/*"sv;
+            case content_type::APP_WC:
+                return "application/*"sv;
+            case content_type::JSON:
+                return "application/json"sv;
+            case content_type::MISC:
+                return "application/misc"sv;
+            case content_type::U8STREAM:
+                return "application/octet-stream"sv;
+            case content_type::XURL:
+                return "application/x-www-form-urlencoded"sv;
+            case content_type::XML:
+                return "application/xml"sv;
+            case content_type::TEXT_WC:
+                return "text/*"sv;
+            case content_type::CSS:
+                return "text/css"sv;
+            case content_type::STREAM:
+                return "text/event-stream"sv;
+            case content_type::HTML:
+                return "text/html"sv;
+            case content_type::PLAIN:
+                return "text/plain"sv;
+        }
+    }
 
     namespace detail
     {
@@ -14,63 +53,108 @@ namespace wshttp
         }
     }  // namespace detail
 
+    size_t hash_reqptr(evhttp_request* req)
+    {
+        return reinterpret_cast<std::uintptr_t>(req);
+    }
+
     void request_callbacks::req_done_cb(struct evhttp_request* req, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
-        return detail::_get_request(user_arg)->recv_response(req);
+        log->critical("ptr hash: {}", hash_reqptr(req));
+        return detail::_get_request(user_arg)->request_recv(req);
     }
 
-    void request_callbacks::req_error_cb(evhttp_request_error ec, void* /* user_arg */)
+    void request_callbacks::req_error_cb(evhttp_request_error ec, void* user_arg)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
-        log->critical("HTTP request error: {}", detail::evreq_err_str(ec));
+        log->info("HTTP request error: {}", detail::evreq_err_str(ec));
+        return detail::_get_request(user_arg)->test_method();
     }
 
-    http_request::http_request(outbound_session& s, request_id_t id, uri u, METHOD m) :
+    http_request::http_request(
+            outbound_session& s, request_id_t id, uri_ptr u, METHOD m, std::optional<request_opts> opts) :
             _request_id{id}, _session{s}, _uri{std::move(u)}, _method{m}
     {
-        auto* bev = s.new_bev();
-
-        if (not bev)
-            throw std::runtime_error{
-                    "Outbound request (remote: {}) failed to create new bufferevent!"_format(u.hview())};
-
-        auto* h = _uri.host().c_str();
-
-        _evconn.reset(evhttp_connection_base_bufferevent_new(bufferevent_get_base(bev), nullptr, bev, h, _uri.port()));
-
-        if (not _evconn)
-            throw std::runtime_error{
-                    "Outbound request (remote: {}) failed to create new evhttp_connection!"_format(_uri.hview())};
-
         _req.reset(evhttp_request_new(request_callbacks::req_done_cb, this));
+        // _req.reset(_session.new_req());
 
         if (not _req)
             throw std::runtime_error{"Outbound request failed to make new evhttp_request object!"};
+
+        if (opts)
+            populate_internals(std::move(*opts));
+        else
+            populate_internals();
+
+        log->critical("ptr hash: {}", hash_reqptr(_req.get()));
 
         evhttp_request_own(_req.get());
         assert(evhttp_request_is_owned(_req.get()));
 
         evhttp_request_set_error_cb(_req.get(), request_callbacks::req_error_cb);
 
-        _buffer = evhttp_request_get_output_headers(_req.get());
+        auto* evbuffer = evhttp_request_get_output_headers(_req.get());
 
-        check_rv(evhttp_add_header(_buffer, hdr::host, h), "add host hdr", 0);
-        check_rv(evhttp_add_header(_buffer, hdr::conn, hdr::close), "add conn close hdr", 0);
+        check_rv(evhttp_add_header(evbuffer, hdr_fields::host, _uri->host().c_str()), "add host hdr", 0);
+        check_rv(
+                evhttp_add_header(evbuffer, hdr_fields::accept, content_type_string(content_type::JSON).data()),
+                "add json hdr",
+                0);
+
+        if (_close_session_on_complete)
+            check_rv(evhttp_add_header(evbuffer, hdr_fields::conn, hdr_fields::close), "add conn close hdr", 0);
 
         if (evhttp_make_request(
-                    _evconn.get(), _req.get(), detail::get_method_cmd_type(_method), _uri.pathquery().c_str()) != 0)
+                    _session._evconn.get(),
+                    _req.get(),
+                    detail::get_method_cmd_type(_method),
+                    _uri->pathquery().c_str()) != 0)
             throw std::runtime_error{"Failed to dispatch evhttp_request!"};
     }
 
-    http_req_ptr http_request::construct(outbound_session& s, request_id_t id, uri u, METHOD m)
+    http_request::~http_request()
+    {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+    }
+
+    void http_request::populate_internals()
+    {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+        _type = _session._default_type;
+        _hook = _session.make_req_data_caller();
+    }
+
+    void http_request::populate_internals(request_opts opts)
+    {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+
+        if (opts.media_type)
+            _type = *opts.media_type;
+        else
+            _type = _session._default_type;
+
+        if (opts.data_cb)
+            _hook = _session.make_req_data_caller(std::move(*opts.data_cb));
+        else
+            _hook = _session.make_req_data_caller();
+
+        if (opts.flags & std::to_underlying(hdr_flags::CLOSE))
+        {
+            log->critical("GOOD");
+            _close_session_on_complete = true;
+        }
+    }
+
+    http_req_ptr http_request::construct(
+            outbound_session& s, request_id_t id, uri_ptr u, METHOD m, std::optional<request_opts> opts)
     {
         http_req_ptr ret = nullptr;
 
         try
         {
-            ret = std::unique_ptr<http_request>(new http_request{s, id, std::move(u), m});
+            ret = std::unique_ptr<http_request>(new http_request{s, id, std::move(u), m, std::move(opts)});
         }
         catch (const std::exception& e)
         {
@@ -94,7 +178,18 @@ namespace wshttp
         }
     }
 
-    void http_request::recv_response(struct evhttp_request* req)
+    void http_request::set_close_on_complete()
+    {
+        log->trace("{} called", __PRETTY_FUNCTION__);
+        _close_session_on_complete = true;
+    }
+
+    void http_request::test_method()
+    {
+        log->critical("inner ptr hash: {}", hash_reqptr(_req.get()));
+    }
+
+    void http_request::request_recv(struct evhttp_request* req)
     {
         log->trace("{} called", __PRETTY_FUNCTION__);
 
@@ -104,39 +199,52 @@ namespace wshttp
             return signal_close();
         }
 
-        int code{evhttp_request_get_response_code(req)};
-        std::string_view line{evhttp_request_get_response_code_line(req)};
+        if (!_req || !evhttp_request_get_response_code(_req.get()))
+        {
+            log->critical("ERROR: inner http req ptr is gone? Shutting down session");
+            return signal_close(true);
+        }
 
-        auto* evbuffer = evhttp_request_get_input_buffer(req);
+        log->critical("function ptr hash: {}", hash_reqptr(req));
+        log->critical("inner ptr hash: {}", hash_reqptr(_req.get()));
+
+        int code1{evhttp_request_get_response_code(req)};
+        std::string_view line1{evhttp_request_get_response_code_line(req)};
+
+        int nread_comp = evbuffer_get_length(evhttp_request_get_input_buffer(req));
+
+        int code{evhttp_request_get_response_code(_req.get())};
+        std::string_view line{evhttp_request_get_response_code_line(_req.get())};
+
+        auto* evbuffer = evhttp_request_get_input_buffer(_req.get());
+
         int nread = evbuffer_get_length(evbuffer);
 
-        // std::fwrite(evbuffer_pullup(evbuffer, nread), nread, 1, stderr);
-        evbuffer_drain(evbuffer, nread);
+        log->debug("bufsize={}, code={}, line={}", nread == nread_comp, code == code1, line == line1);
 
         log->info(
                 "Request (remote:{}) received response:[ payload:{}B | code:{} | line: {} ]",
-                _uri.hview(),
+                _uri->hview(),
                 nread,
                 code,
                 line);
 
-        /** If close flag set by user or returned from server, close
-         */
+        std::vector<char> buf(nread);
 
-        // close();
+        if (evbuffer_remove(evbuffer, buf.data(), nread) < 0)
+        {
+            log->critical("Buffer error: failed to remove request data from evbuffer!");
+            return signal_close(true);
+        }
+
+        if (buf.back() != '\n')
+            buf.push_back('\n');
+
+        log->debug("{}B read from request response body (id:{})", nread, _request_id);
+
+        if (_hook)
+            _hook(std::move(buf));
+
+        signal_close(_close_session_on_complete);
     }
-
-    // http_request::http_request(evhttp_request* r, const char* host, METHOD m) :
-    //         req{r}, buffer{evhttp_request_get_output_headers(req)}, _method{m}
-    // {
-    //     // TODO: fully encapsulate request production w/ new constructor
-    //     if (not req)
-    //         throw std::runtime_error{"Failed to make new evhttp_request!"};
-
-    //     evhttp_request_set_error_cb(req, request_callbacks::req_error_cb);
-
-    //     check_rv(evhttp_add_header(buffer, hdr::host, host), "add host hdr", 0);
-    //     check_rv(evhttp_add_header(buffer, hdr::conn, hdr::close), "add conn close hdr", 0);
-    // }
-
 }  // namespace wshttp

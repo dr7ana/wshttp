@@ -23,54 +23,43 @@ extern "C" {
 #define BSWAP16 _byteswap_ushort
 #define BSWAP32 _byteswap_ulong
 #define BSWAP64 _byteswap_uint64
+
+namespace wshttp::enc::detail
+{
+
+    template <std::unsigned_integral T>
+    [[nodiscard]] inline constexpr T byteswap_fallback(T x) noexcept
+    {
+        if constexpr (sizeof(T) == 2)
+            return (x >> 8) | ((x & 0xff) << 8);
+        else if constexpr (sizeof(T) == 4)
+            return ((x & 0xff000000u) >> 24)  // (comments for formatting)
+                 | ((x & 0x00ff0000u) >> 8)   //
+                 | ((x & 0x0000ff00u) << 8)   //
+                 | ((x & 0x000000ffu) << 24);
+        else if constexpr (sizeof(T) == 8)
+            return ((x & 0xff00000000000000ull) >> 56)  // (comments for formatting)
+                 | ((x & 0x00ff000000000000ull) >> 40)  //
+                 | ((x & 0x0000ff0000000000ull) >> 24)  //
+                 | ((x & 0x000000ff00000000ull) >> 8)   //
+                 | ((x & 0x00000000ff000000ull) << 8)   //
+                 | ((x & 0x0000000000ff0000ull) << 24)  //
+                 | ((x & 0x000000000000ff00ull) << 40)  //
+                 | ((x & 0x00000000000000ffull) << 56);
+        else
+        {
+            static_assert(sizeof(T) == 1);
+            return x;
+        }
+    }
+}  // namespace wshttp::enc::detail
+#else
+#error What are you trying to compile this with?
 #endif
 
 namespace wshttp::enc
 {
-#ifdef __cpp_lib_bit_cast
     using std::bit_cast;
-#else
-    template <class To, class From>
-        requires(
-                sizeof(To) == sizeof(From) && std::is_trivially_copyable<To>::value &&
-                std::is_trivially_copyable<From>::value && std::is_trivially_constructible<To>::value &&
-                std::is_trivially_constructible<From>::value)
-    [[nodiscard]] inline constexpr To bit_cast(const From& from) noexcept
-    {
-        To storage{};
-        std::construct_at(std::launder(&storage), from);
-        return storage;
-    }
-#endif
-
-    namespace detail
-    {
-        template <std::unsigned_integral T>
-        [[nodiscard]] inline constexpr T byteswap_fallback(T x) noexcept
-        {
-            if constexpr (sizeof(T) == 2)
-                return (x >> 8) | ((x & 0xff) << 8);
-            else if constexpr (sizeof(T) == 4)
-                return ((x & 0xff000000u) >> 24)  // (comments for formatting)
-                     | ((x & 0x00ff0000u) >> 8)   //
-                     | ((x & 0x0000ff00u) << 8)   //
-                     | ((x & 0x000000ffu) << 24);
-            else if constexpr (sizeof(T) == 8)
-                return ((x & 0xff00000000000000ull) >> 56)  // (comments for formatting)
-                     | ((x & 0x00ff000000000000ull) >> 40)  //
-                     | ((x & 0x0000ff0000000000ull) >> 24)  //
-                     | ((x & 0x000000ff00000000ull) >> 8)   //
-                     | ((x & 0x00000000ff000000ull) << 8)   //
-                     | ((x & 0x0000000000ff0000ull) << 24)  //
-                     | ((x & 0x000000000000ff00ull) << 40)  //
-                     | ((x & 0x00000000000000ffull) << 56);
-            else
-            {
-                static_assert(sizeof(T) == 1);
-                return x;
-            }
-        }
-    }  // namespace detail
 
     template <typename Char>
     concept basic_char =

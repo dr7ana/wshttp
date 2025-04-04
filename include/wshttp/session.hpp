@@ -1,7 +1,7 @@
 #pragma once
 
+#include "opts.hpp"
 #include "request.hpp"
-#include "types.hpp"
 
 namespace wshttp
 {
@@ -17,13 +17,18 @@ namespace wshttp
 
     using bufferevent_ptr = std::unique_ptr<::bufferevent, deleters::_bufferevent>;
 
-    struct inbound_request
+    struct session_base
+    {
+        //
+    };
+
+    struct inbound_session
     {
         friend class listener;
 
-        explicit inbound_request(/* listener& l, */ ip_address remote, evutil_socket_t sock);
+        explicit inbound_session(/* listener& l, */ ip_address remote, evutil_socket_t sock);
 
-        ~inbound_request();
+        ~inbound_session();
 
       private:
         // listener& _l;
@@ -44,19 +49,19 @@ namespace wshttp
         void recv_connect(struct evhttp_request* req);
         void recv_patch(struct evhttp_request* req);
 
-        using request_handler = void (inbound_request::*)(struct evhttp_request* req);
+        using request_handler = void (inbound_session::*)(struct evhttp_request* req);
 
         std::array<request_handler, 10> handlers{
-                &inbound_request::recv_unsupported,
-                &inbound_request::recv_get,
-                &inbound_request::recv_post,
-                &inbound_request::recv_head,
-                &inbound_request::recv_put,
-                &inbound_request::recv_delete,
-                &inbound_request::recv_options,
-                &inbound_request::recv_trace,
-                &inbound_request::recv_connect,
-                &inbound_request::recv_patch};
+                &inbound_session::recv_unsupported,
+                &inbound_session::recv_get,
+                &inbound_session::recv_post,
+                &inbound_session::recv_head,
+                &inbound_session::recv_put,
+                &inbound_session::recv_delete,
+                &inbound_session::recv_options,
+                &inbound_session::recv_trace,
+                &inbound_session::recv_connect,
+                &inbound_session::recv_patch};
 
       protected:
         void recv_request(struct evhttp_request* req);
@@ -65,12 +70,22 @@ namespace wshttp
         //
     };
 
+    /** TODO:
+            - interface base class for outbound_session to be derived from
+            - pure virtual methods to be exposed publicly
+     */
+    struct session_interface
+    {
+        //
+    };
+
     class outbound_session final : public socket_interface
     {
+      protected:
+        explicit outbound_session(endpoint& ep, uri_ptr u, std::optional<session_opts> opts = std::nullopt);
+
       public:
         // static std::shared_ptr<outbound_session> make_outbound(endpoint& e, uri u);
-
-        explicit outbound_session(endpoint& ep, domain_host remote);
 
         outbound_session() = delete;
 
@@ -82,15 +97,23 @@ namespace wshttp
         // initialize in this order
         // uri _uri;
 
-        domain_host _remote;
+        content_type _default_type{content_type::WILDCARD};
+
+        request_data_cb _hook;
+
+        evconn_ptr _evconn;
+
+        uri_ptr _uri;
 
         std::atomic<request_id_t> _next_request_id{};
 
-        using request_ptr_que = std::list<http_req_ptr>;
+        // request_ptr_set _request_que;
 
-        request_ptr_que _request_que;
+        request_ptr_list _request_que;
 
-        std::unordered_map<request_id_t, request_ptr_que::iterator> _request_table;
+        std::unordered_map<request_id_t, request_ptr_list::iterator> _request_table;
+
+        void populate_internals(session_opts opts);
 
         SSL* new_ssl() override;
 
@@ -99,16 +122,31 @@ namespace wshttp
       protected:
         bufferevent* new_bev(bool ssl = true) override;
 
-        void initiate_request(uri u, METHOD method);
+        request_data_cb make_req_data_caller();
+
+        request_data_cb make_req_data_caller(request_data_cb cb);
+
+        // Called internally
+        void initiate_request(METHOD method, uri_ptr req_uri, std::optional<request_opts> opts = std::nullopt);
+
+        // void initiate_request(uri_ptr u, METHOD method);
+
+        // void recv_request(struct evhttp_request* req);
 
         void close_request(request_id_t id);
 
       public:
-        auto operator<=>(const outbound_session& o) const { return _remote <=> o._remote; }
+        // Called externally
+        void request(METHOD method, std::optional<request_opts> opts = std::nullopt);
+        void request(METHOD method, std::string_view path, std::optional<request_opts> opts = std::nullopt);
+
+        auto operator<=>(const outbound_session& o) const { return _uri->host_domain() <=> o._uri->host_domain(); }
         bool operator==(const outbound_session& o) const { return (*this <=> o) == 0; }
 
         friend class endpoint;
         friend struct http_request;
+        friend struct outbound_callbacks;
+        friend class event_loop;
     };
 
     struct outbound_ptr_comp

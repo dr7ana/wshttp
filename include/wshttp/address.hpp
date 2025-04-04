@@ -7,6 +7,23 @@
 
 #include <variant>
 
+/** TODO: **post http_request unification**
+        URI as a concept isn't needed at the http_request level. Requests are many:1 within sessions, which themselves
+    are 1:1 with host:port (dmain_host) w.r.t. the TLS session. Requests are then 1:1 with "{path}+{query}", and can
+    be decomposed as such.
+
+        - Take URI out of shared_ptr
+        - When passing to an http_request object, decompose into:
+            - domain_host
+                - Encapsulates the concept of TLS host (host:port)
+                - Add ip_address to object if IP address is given to invocation
+                - For subsequent requests on established sessions, the domain_host
+                    half can be discarded
+            - path_query
+                - Holds the metadata unique to each http request
+                - On subsequent requests, only this portion is needed
+*/
+
 namespace wshttp
 {
     struct domain_host;
@@ -20,11 +37,7 @@ namespace wshttp
     {
         struct _evuri
         {
-            inline void operator()(::evhttp_uri* u) const
-            {
-                if (u)
-                    evhttp_uri_free(u);
-            }
+            inline void operator()(::evhttp_uri* u) const { evhttp_uri_free(u); }
         };
     }  // namespace deleters
 
@@ -37,6 +50,8 @@ namespace wshttp
     struct uri
     {
         uri() = delete;
+
+        static uri_ptr make(std::string_view input, const url_result_ptr& base = nullptr);
 
         uri(std::string_view input, const url_result_ptr& base = nullptr);
 
@@ -70,6 +85,8 @@ namespace wshttp
         const url_result_ptr& base() { return _url; }
 
         domain_host host_domain() const;
+
+        void set_path(std::string_view path);
 
         const std::string& host() const { return _host; }
         const std::string& pathquery() const { return _pathquery; }

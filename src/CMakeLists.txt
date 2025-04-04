@@ -5,7 +5,6 @@ add_library(
     wshttp
 
     address.cpp
-    callbacks.cpp
     dns.cpp
     endpoint.cpp
     format.cpp

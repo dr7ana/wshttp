@@ -19,9 +19,9 @@ namespace wshttp
     {
         url_result_ptr ret = nullptr;
         if (base)
-            ret = std::make_shared<url_result>(ada::parse<ada::url_aggregator>(input, &base->value()));
+            ret = std::make_unique<url_result>(ada::parse<ada::url_aggregator>(input, &base->value()));
         else
-            ret = std::make_shared<url_result>(ada::parse<ada::url_aggregator>(input));
+            ret = std::make_unique<url_result>(ada::parse<ada::url_aggregator>(input));
 
         if (not ret or not *ret)
             log->warn("Parser failed to parse url input: {}", input);

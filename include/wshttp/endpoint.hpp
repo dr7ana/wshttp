@@ -20,13 +20,12 @@ namespace wshttp
     class endpoint final : public std::enable_shared_from_this<endpoint>
     {
         template <typename... Opt>
+            requires detail::require_one_of_is<std::shared_ptr<ssl_creds>, Opt...>
         explicit endpoint(std::shared_ptr<event_loop> ev_loop, Opt&&... opts) :
                 _loop{std::move(ev_loop)},
                 _dns{_loop->template make_shared<dns::server>(*this)},
                 caller_id{++next_caller_id}
         {
-            require_ssl_creds<Opt...>();
-
             if constexpr (sizeof...(opts))
                 handle_ep_opt(std::forward<Opt>(opts)...);
 
@@ -79,9 +78,9 @@ namespace wshttp
 
         bool _listen(ip_address addr);
 
-        bool _request(std::string_view uri, METHOD method);
+        bool _request(std::string_view uri, METHOD method, std::optional<session_opts> opts = std::nullopt);
 
-        void handle_ep_opt();
+        // bool _request(std::string_view uri, METHOD method);
 
       public:
         bool listen(ip_v ip, uint16_t port) { return _listen(ip_address{ip, port}); }
@@ -96,6 +95,16 @@ namespace wshttp
 
         //     return _request(uri, method);
         // }
+
+        std::shared_ptr<outbound_session> initiate_session(
+                std::string_view uri, std::optional<session_opts> opts = std::nullopt);
+
+        bool request(std::string_view uri, METHOD method, session_opts opts)
+        {
+            return _request(uri, method, std::move(opts));
+        }
+
+        // bool request(std::string_view uri, METHOD method, request_opts opts) { return _request(uri, method); }
 
         bool request(std::string_view uri, METHOD method) { return _request(uri, method); }
 

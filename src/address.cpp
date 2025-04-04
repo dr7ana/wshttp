@@ -60,6 +60,22 @@ namespace wshttp
         }
     }
 
+    uri_ptr uri::make(std::string_view input, const url_result_ptr& base)
+    {
+        uri_ptr ret = nullptr;
+
+        try
+        {
+            ret = std::make_shared<uri>(input, base);
+        }
+        catch (const std::exception& e)
+        {
+            log->critical("uri parse exception: {}", e.what());
+        }
+
+        return ret;
+    }
+
     uri::uri(std::string_view input, const url_result_ptr& base)
     {
         if (input.size() >= MAX_URI_LEN)
@@ -151,6 +167,13 @@ namespace wshttp
     domain_host uri::host_domain() const
     {
         return domain_host{url().get_host(), _port};
+    }
+
+    void uri::set_path(std::string_view path)
+    {
+        log->debug("New path to query: {}", path);
+        _pathquery.clear();
+        _pathquery += path;
     }
 
     std::string_view uri::scheme() const
