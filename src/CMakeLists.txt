@@ -28,7 +28,7 @@ target_link_libraries(
     libevent::ssl
     libevent::threads
     ada::ada
-    spdlog::spdlog_header_only
+    un::log
     wshttp_external
 
     PRIVATE

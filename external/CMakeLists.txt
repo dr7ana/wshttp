@@ -6,13 +6,11 @@ if(GIT_FOUND)
     include(check_submodule)
     check_submodule(ada)
     check_submodule(libevent)
-    check_submodule(spdlog)
+    check_submodule(unlog)
 endif()
 
-# spdlog
-set(SPDLOG_FMT_EXTERNAL_HO ON CACHE BOOL "" FORCE)
-#set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "" FORCE)
-add_subdirectory(spdlog EXCLUDE_FROM_ALL)
+# unlog
+add_subdirectory(unlog)
 
 # libevent
 set(EVENT__LIBRARY_TYPE "STATIC" CACHE STRING "" FORCE)

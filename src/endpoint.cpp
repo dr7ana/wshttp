@@ -16,15 +16,16 @@ namespace wshttp
         assert(_stats);
 
         if (_stats)
-            log->debug("Endpoint stats ticker started!");
+            unlog::debug("Endpoint stats ticker started!");
         else
-            log->warn("Endpoint failed to start stats ticker!");
+            unlog::warn("Endpoint failed to start stats ticker!");
 
-        log->trace("Client endpoint created with initialized event loop!");
+        unlog::trace("Client endpoint created with initialized event loop!");
     }
 
-    bool endpoint::_listen(ip_address addr)
+    bool endpoint::_listen(ip_address addr, std::optional<inbound_opts> opts)
     {
+        (void)opts;
         return _loop->call_get([&]() {
             auto [itr, b] = _listeners.try_emplace(addr, nullptr);
 
@@ -47,7 +48,7 @@ namespace wshttp
             auto _uri = uri::make(u);
             if (not _uri)
             {
-                log->warn("Outbound session must be initiated to a valid remote host (given: {})", u);
+                unlog::warn("Outbound session must be initiated to a valid remote host (given: {})", u);
                 return nullptr;
             }
 
@@ -55,12 +56,12 @@ namespace wshttp
 
             if (b)
             {
-                log->info("Constructing outbound session to new remote domain: {}", _uri->hview());
+                unlog::info("Constructing outbound session to new remote domain: {}", _uri->hview());
                 it->second = make_shared<outbound_session>(*this, std::move(_uri), std::move(opts));
             }
             else
             {
-                log->info("Outbound session already exists for remote domain: {}!", _uri->hview());
+                unlog::info("Outbound session already exists for remote domain: {}!", _uri->hview());
                 return nullptr;
             }
 
@@ -78,11 +79,11 @@ namespace wshttp
 
             if (b)
             {
-                log->info("Constructing outbound session to new remote domain: {}", _uri->hview());
+                unlog::info("Constructing outbound session to new remote domain: {}", _uri->hview());
                 it->second = make_shared<outbound_session>(*this, std::move(_uri), std::move(opts));
             }
             else
-                log->info("Outbound session already exists for remote domain: {}!", _uri->hview());
+                unlog::info("Outbound session already exists for remote domain: {}!", _uri->hview());
 
             it->second->request(method);
 
@@ -97,7 +98,7 @@ namespace wshttp
         auto n_inbounds = _completed_inbounds.load();
         auto n_outbounds = _completed_outbounds.load();
 
-        log->info(
+        unlog::info(
                 "Endpoint:[ listeners:{} | remote domains:{} | completed:[ inbound:{} | outbound:{} ] ]",
                 n_listeners,
                 n_remotes,
@@ -107,12 +108,13 @@ namespace wshttp
 
     endpoint::~endpoint()
     {
-        log->debug("Shutting down client...");
+        unlog::debug("Shutting down client...");
 
         if (not _close_immediately)
             shutdown_endpoint();
 
         _listeners.clear();
+        _outbound_sessions.clear();
 
         // clear all mappings here
         if (_loop.use_count() == 1)
@@ -120,52 +122,17 @@ namespace wshttp
 
         _loop->stop_tickers(caller_id);
 
-        log->info("Client shutdown complete!");
-    }
-
-    void endpoint::test_extract_method(std::string url1, std::string url2, std::string url3)
-    {
-        log->trace("{} called", __PRETTY_FUNCTION__);
-
-        auto ev1 = uri{url1};
-        auto ev2 = uri{url2};
-        auto ev3 = uri{url3};
-        auto ev3_withbase = uri{"/cooking", ev3.base()};
-    }
-
-    void endpoint::test_parse_method(std::string url)
-    {
-        log->trace("{} called", __PRETTY_FUNCTION__);
-        evhttp_uri* evuri = evhttp_uri_parse(url.c_str());
-
-        std::string_view scheme, host, path;
-
-        scheme = evhttp_uri_get_scheme(evuri);
-        host = evhttp_uri_get_host(evuri);
-        int port = evhttp_uri_get_port(evuri);
-        path = evhttp_uri_get_path(evuri);
-
-        if (port == -1)
-        {
-            port = (scheme == "https") ? 443 : 80;
-            log->debug("setting uri port to {}", port);
-            evhttp_uri_set_port(evuri, port);
-        }
-
-        auto msg = "\n\tscheme:{}\n\thost:{}\n\tport:{}\n\tpath:{}"_format(scheme, host, port, path);
-
-        log->critical("parsed evhttp uri data: {}", msg);
-        evhttp_uri_free(evuri);
+        unlog::info("Client shutdown complete!");
     }
 
     void endpoint::close_listener(ip_address b)
     {
         assert(in_event_loop());
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
         if (_listeners.erase(b))
-            log->info("Endpoint closed listener on bind: {}", b);
+            unlog::info("Endpoint closed listener on bind: {}", b);
         else
-            log->warn("Endpoint failed to find listener (bind: {}) to close!", b);
+            unlog::warn("Endpoint failed to find listener (bind: {}) to close!", b);
     }
 
     void endpoint::close_outbound(const domain_host& remote)
@@ -176,15 +143,15 @@ namespace wshttp
         {
             _outbound_sessions.erase(it);
             ++_completed_outbounds;
-            log->info("Endpoint closed outbound session to remote: {}", remote.host());
+            unlog::info("Endpoint closed outbound session to remote: {}", remote.host());
         }
         else
-            log->warn("Endpoint failed to find any outbound sessions to remote: {}", remote.host());
+            unlog::warn("Endpoint failed to find any outbound sessions to remote: {}", remote.host());
     }
 
     void endpoint::shutdown_endpoint()
     {
-        log->debug("{} called...", __PRETTY_FUNCTION__);
+        unlog::debug("{} called...", __PRETTY_FUNCTION__);
 
         std::promise<void> p;
         auto f = p.get_future();
@@ -216,13 +183,13 @@ namespace wshttp
         if (!e)
             throw std::runtime_error{"Failed to create evhttp event base!"};
 
-        log->trace("Created evhttp event base...");
+        unlog::trace("Created evhttp event base...");
         return e;
     }
 
     void endpoint::handle_ep_opt(std::shared_ptr<ssl_creds> c)
     {
-        log->info("New endpoint configured with SSL credentials");
+        unlog::info("New endpoint configured with SSL credentials");
         _ctx = app_context::make(std::move(c));
     }
 }  //  namespace wshttp

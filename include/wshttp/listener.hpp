@@ -2,6 +2,7 @@
 
 #include "address.hpp"
 #include "loop.hpp"
+#include "opts.hpp"
 #include "ssl.hpp"
 
 extern "C" {
@@ -47,8 +48,10 @@ namespace wshttp
         friend class event_loop;
         friend struct listen_callbacks;
 
-        explicit listener(endpoint& e, ip_address bind);
-        explicit listener(endpoint& e, uint16_t p) : listener{e, ip_address{p}} {}
+        explicit listener(endpoint& e, ip_address bind, std::optional<inbound_opts> opts = std::nullopt);
+        explicit listener(endpoint& e, uint16_t p, std::optional<inbound_opts> opts = std::nullopt) :
+                listener{e, ip_address{p}, std::move(opts)}
+        {}
 
       public:
         listener() = delete;
@@ -63,6 +66,8 @@ namespace wshttp
         tcp_listener _tcp;
 
         evhttp_ptr _evh;
+
+        std::optional<inbound_opts> _iopts;
 
         // key: remote address, value: session ptr
         std::unordered_map<ip_address, std::shared_ptr<inbound_session>> _requests;

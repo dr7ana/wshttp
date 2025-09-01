@@ -20,11 +20,13 @@ namespace wshttp
     //     return detail::_get_outbound(user_arg)->recv_request(req);
     // }
 
-    inbound_session::inbound_session(/* listener& l, */ ip_address remote, evutil_socket_t sock) :
+    inbound_session::inbound_session(
+            /* listener& l, */ ip_address remote, evutil_socket_t sock, std::optional<inbound_opts> opts) :
             // _l{l},
             _path{ip_address{}, std::move(remote)}, _fd{sock}
     {
-        log->debug("Inbound request has fd: {}", _fd);
+        unlog::debug("Inbound request has fd: {}", _fd);
+        (void)opts;
 
         int val = 1;
         if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0)
@@ -32,17 +34,17 @@ namespace wshttp
                     "Failed to set TCP_NODELAY on inbound request socket: {}"_format(detail::current_error())};
 
         _path._local = ip_address::from_socket(_fd);
-        log->info("Successfully configured inbound request; path: {}", _path);
+        unlog::info("Successfully configured inbound request; path: {}", _path);
     }
 
     inbound_session::~inbound_session()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
     }
 
     void inbound_session::recv_request(struct evhttp_request* req)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         METHOD method = detail::get_request_method(req);
 
@@ -53,68 +55,68 @@ namespace wshttp
 
     void inbound_session::recv_unsupported(struct evhttp_request* req)
     {
-        log->warn("Received unsupported HTTP request (code:{})", std::to_underlying(evhttp_request_get_command(req)));
+        unlog::warn("Received unsupported HTTP request (code:{})", std::to_underlying(evhttp_request_get_command(req)));
         evhttp_send_error(req, HTTP_BADMETHOD, nullptr);
     }
 
     void inbound_session::recv_get(struct evhttp_request* req)
     {
-        log->info("Received GET HTTP request from {}", _path.remote());
+        unlog::info("Received GET HTTP request from {}", _path.remote());
         evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
     void inbound_session::recv_post(struct evhttp_request* req)
     {
-        log->info("Received POST HTTP request from {}", _path.remote());
+        unlog::info("Received POST HTTP request from {}", _path.remote());
         return recv_get(req);
         // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
     void inbound_session::recv_head(struct evhttp_request* req)
     {
-        log->info("Received HEAD HTTP request from {}", _path.remote());
+        unlog::info("Received HEAD HTTP request from {}", _path.remote());
         return recv_get(req);
         // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
     void inbound_session::recv_put(struct evhttp_request* req)
     {
-        log->info("Received PUT HTTP request from {}", _path.remote());
+        unlog::info("Received PUT HTTP request from {}", _path.remote());
 
         evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
     void inbound_session::recv_delete(struct evhttp_request* req)
     {
-        log->info("Received DELETE HTTP request from {}", _path.remote());
+        unlog::info("Received DELETE HTTP request from {}", _path.remote());
         return recv_get(req);
         // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
     void inbound_session::recv_options(struct evhttp_request* req)
     {
-        log->info("Received OPTIONS HTTP request from {}", _path.remote());
+        unlog::info("Received OPTIONS HTTP request from {}", _path.remote());
         return recv_get(req);
         // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
     void inbound_session::recv_trace(struct evhttp_request* req)
     {
-        log->info("Received TRACE HTTP request from {}", _path.remote());
+        unlog::info("Received TRACE HTTP request from {}", _path.remote());
         return recv_get(req);
         // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
     void inbound_session::recv_connect(struct evhttp_request* req)
     {
-        log->info("Received CONNECT HTTP request from {}", _path.remote());
+        unlog::info("Received CONNECT HTTP request from {}", _path.remote());
         return recv_get(req);
         // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
 
     void inbound_session::recv_patch(struct evhttp_request* req)
     {
-        log->info("Received PATCH HTTP request from {}", _path.remote());
+        unlog::info("Received PATCH HTTP request from {}", _path.remote());
         return recv_get(req);
         // evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
     }
@@ -122,7 +124,7 @@ namespace wshttp
     outbound_session::outbound_session(endpoint& ep, uri_ptr u, std::optional<session_opts> opts) :
             _ep{ep}, _uri{std::move(u)}
     {
-        log->debug("Outbound session (remote: {}) created", _uri->hview());
+        unlog::debug("Outbound session (remote: {}) created", _uri->hview());
 
         auto* bev = new_bev();
 
@@ -138,12 +140,12 @@ namespace wshttp
                     "Outbound session(remote: {}) failed to create new evhttp_connection!"_format(_uri->hview())};
 
         if (opts)
-            populate_internals(std::move(*opts));
+            populate_opts(std::move(*opts));
     }
 
-    void outbound_session::populate_internals(session_opts opts)
+    void outbound_session::populate_opts(session_opts opts)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         if (opts.data_cb)
             _hook = std::move(*opts.data_cb);
@@ -153,20 +155,20 @@ namespace wshttp
 
     outbound_session::~outbound_session()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
     }
 
     void outbound_session::initiate_request(METHOD method, uri_ptr req_uri, std::optional<request_opts> opts)
     {
         // return _ep.loop()->call_get([&](){});
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         auto& req = _request_que.emplace_front(
                 http_request::construct(*this, ++_next_request_id, std::move(req_uri), method, std::move(opts)));
 
         if (not req)
         {
-            log->warn("Outbound session (remote: {}) failed to create http request!");
+            unlog::warn("Outbound session (remote: {}) failed to create http request!");
             _request_que.erase(_request_que.begin());
         }
 
@@ -174,22 +176,22 @@ namespace wshttp
 
         if (!b) [[unlikely]]
         {
-            log->critical("ERROR: REQUEST ID COLLISION");
+            unlog::critical("ERROR: REQUEST ID COLLISION");
             req->set_close_on_complete();
         }
         else
-            log->info("Successfully dispatched new evhttp_request for {}", _uri->hview());
+            unlog::info("Successfully dispatched new evhttp_request for {}", _uri->hview());
     }
 
     void outbound_session::request(METHOD method, std::optional<request_opts> opts)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
         initiate_request(method, _uri, std::move(opts));
     }
 
     void outbound_session::request(METHOD method, std::string_view path, std::optional<request_opts> opts)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
         auto _new_uri = _uri;
         _new_uri->set_path(path);
         initiate_request(method, std::move(_new_uri), std::move(opts));
@@ -198,7 +200,7 @@ namespace wshttp
     // void outbound_session::recv_request(struct evhttp_request* req)
     // {
     //     assert(_ep.in_event_loop());
-    //     log->trace("{} called", __PRETTY_FUNCTION__);
+    //     unlog::trace("{} called", __PRETTY_FUNCTION__);
 
     //     if (auto it = _request_que.find(req); it != _request_que.end())
     //         (*it)->request_recv(req);
@@ -207,28 +209,28 @@ namespace wshttp
     void outbound_session::close_request(request_id_t id)
     {
         assert(_ep.in_event_loop());
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
         _ep.loop()->call_soon([this, id]() mutable {
             if (auto it = _request_table.find(id); it != _request_table.end())
             {
                 _request_que.erase(it->second);
-                log->debug("Deleted completed request (id:{})", id);
+                unlog::debug("Deleted completed request (id:{})", id);
             }
             else
-                log->warn("Failed to find completed request id:{} in lookup table and request que!", id);
+                unlog::warn("Failed to find completed request id:{} in lookup table and request que!", id);
         });
     }
 
     SSL* outbound_session::new_ssl()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         SSL* _ssl = SSL_new(_ep.outbound_ctx());
 
         if (!_ssl)
             throw std::runtime_error{"Failed to create SSL/TLS: {}"_format(detail::current_error())};
 
-        log->trace("Created SSL/TLS...");
+        unlog::trace("Created SSL/TLS...");
 
         const auto* h = _uri->host().c_str();
 
@@ -241,7 +243,7 @@ namespace wshttp
 
     bufferevent* outbound_session::new_bev(bool ssl)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         bufferevent* bev = nullptr;
 
@@ -260,7 +262,7 @@ namespace wshttp
 
     request_data_cb outbound_session::make_req_data_caller()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         if (_hook)
             return [this](std::vector<char> buf) mutable -> void {
@@ -272,7 +274,7 @@ namespace wshttp
 
     request_data_cb outbound_session::make_req_data_caller(request_data_cb cb)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         return [this, cb = std::move(cb)](std::vector<char> buf) mutable -> void {
             _ep.loop()->call([&]() { cb(std::move(buf)); });
@@ -281,13 +283,13 @@ namespace wshttp
 
     void outbound_session::close()
     {
-        log->debug("Outbound (remote: {}) signalling endpoint to close session...", _uri->hview());
+        unlog::debug("Outbound (remote: {}) signalling endpoint to close session...", _uri->hview());
 
         _ep.loop()->call_soon([wep = _ep.weak_from_this(), remote = _uri->host_domain()]() mutable {
             if (auto ep = wep.lock())
                 ep->close_outbound(remote);
             else
-                log->warn("Endpoint closed before outbound session (remote: {}) could be closed", remote.host());
+                unlog::warn("Endpoint closed before outbound session (remote: {}) could be closed", remote.host());
         });
     }
 }  // namespace wshttp

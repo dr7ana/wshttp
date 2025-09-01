@@ -26,7 +26,10 @@ namespace wshttp
     {
         friend class listener;
 
-        explicit inbound_session(/* listener& l, */ ip_address remote, evutil_socket_t sock);
+        explicit inbound_session(
+                /* listener& l, */ ip_address remote,
+                evutil_socket_t sock,
+                std::optional<inbound_opts> opts = std::nullopt);
 
         ~inbound_session();
 
@@ -49,9 +52,9 @@ namespace wshttp
         void recv_connect(struct evhttp_request* req);
         void recv_patch(struct evhttp_request* req);
 
-        using request_handler = void (inbound_session::*)(struct evhttp_request* req);
+        using request_handler_direct = void (inbound_session::*)(struct evhttp_request* req);
 
-        std::array<request_handler, 10> handlers{
+        std::array<request_handler_direct, 10> handlers{
                 &inbound_session::recv_unsupported,
                 &inbound_session::recv_get,
                 &inbound_session::recv_post,
@@ -113,7 +116,7 @@ namespace wshttp
 
         std::unordered_map<request_id_t, request_ptr_list::iterator> _request_table;
 
-        void populate_internals(session_opts opts);
+        void populate_opts(session_opts opts);
 
         SSL* new_ssl() override;
 

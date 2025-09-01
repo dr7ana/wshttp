@@ -48,6 +48,9 @@ namespace wshttp
     template <typename F>
     concept request_func = void_func<F, std::vector<char>>;
 
+    using inbound_generic_handler = std::function<void(METHOD, struct evhttp_request*)>;
+    using inbound_method_handler = std::function<void(struct evhttp_request*)>;
+
     namespace detail
     {
         template <typename T, typename E>
@@ -75,16 +78,27 @@ namespace wshttp
     template <typename... Arg>
     concept request_opt_types = ((detail::request_only_opt<Arg> || detail::session_only_opt<Arg>), ...);
 
-    static request_data_cb temp = [](std::vector<char>) {};
-
-    template <typename... Arg>
-    static void verify(Arg&&...)
+    struct inbound_opts final
     {
-        static_assert((request_opt_types<std::decay_t<Arg>>, ...));
-        static_assert((request_opt_types<Arg>, ...));
-    }
+        template <typename... Arg>
+        inbound_opts(Arg&&... args)
+        {
+            ((void)handle_iopt(std::forward<Arg>(args)...));
+        }
 
-    static auto lfunc = []() { verify(temp); };
+        std::unordered_map<METHOD, inbound_method_handler> handlers;
+        inbound_generic_handler generic_handler;
+
+        void handle_iopt(std::pair<METHOD, inbound_method_handler> method_handler)
+        {
+            handlers.emplace(std::move(method_handler));
+        }
+
+        void handle_iopo(inbound_generic_handler generic) { generic_handler = std::move(generic); }
+
+        friend class listener;
+        friend struct inbound_session;
+    };
 
     struct session_opts
     {
@@ -94,7 +108,7 @@ namespace wshttp
         template <typename... Arg>
         session_opts(Arg... args)
         {
-            ((void)handle_ep_opt(std::forward<Arg>(args)), ...);
+            ((void)handle_sopt(std::forward<Arg>(args)), ...);
         }
 
         virtual ~session_opts() = default;
@@ -108,13 +122,13 @@ namespace wshttp
         std::optional<content_type> media_type{};
         std::optional<request_data_cb> data_cb;
 
-        virtual void handle_ep_opt(content_type t) { media_type = t; }
-        virtual void handle_ep_opt(request_data_cb cb) { data_cb = std::move(cb); }
+        virtual void handle_sopt(content_type t) { media_type = t; }
+        virtual void handle_sopt(request_data_cb cb) { data_cb = std::move(cb); }
 
       protected:
         uint8_t flags{};
-        virtual void handle_ep_opt(uint8_t f) { flags |= f; }
-        virtual void handle_ep_opt(hdr_flags f) { flags |= std::to_underlying(f); }
+        virtual void handle_sopt(uint8_t f) { flags |= f; }
+        virtual void handle_sopt(hdr_flags f) { flags |= std::to_underlying(f); }
     };
 
     struct request_opts : public session_opts
@@ -135,7 +149,7 @@ namespace wshttp
     //     template <typename... Arg>
     //     request_opts(Arg... args)
     //     {
-    //         ((void)handle_ep_opt(std::forward<Arg>(args)), ...);
+    //         ((void)handle_sopt(std::forward<Arg>(args)), ...);
     //     }
 
     //     template <typename... Arg>
@@ -148,10 +162,10 @@ namespace wshttp
     //     std::optional<request_data_cb> data_cb;
     //     uint8_t flags{};
 
-    //     void handle_ep_opt(content_type t) { media_type = t; }
-    //     void handle_ep_opt(request_data_cb cb) { data_cb = std::move(cb); }
-    //     void handle_ep_opt(uint8_t f) { flags = f; }
-    //     void handle_ep_opt(hdr_flags f) { flags = std::to_underlying(f); }
+    //     void handle_sopt(content_type t) { media_type = t; }
+    //     void handle_sopt(request_data_cb cb) { data_cb = std::move(cb); }
+    //     void handle_sopt(uint8_t f) { flags = f; }
+    //     void handle_sopt(hdr_flags f) { flags = std::to_underlying(f); }
     // };
 
 }  // namespace wshttp

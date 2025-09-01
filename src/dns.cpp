@@ -70,7 +70,7 @@ namespace wshttp
                 }
             }
 
-            log->critical("{}", msg);
+            unlog::critical("{}", msg);
         }
 
         static dns::server* _get_dns(void* user_arg)
@@ -104,9 +104,9 @@ namespace wshttp
 
             evdns_set_log_fn([](int is_warning, const char* msg) {
                 if (is_warning)
-                    log->critical("{}", msg);
+                    unlog::critical("{}", msg);
                 else
-                    log->debug("{}", msg);
+                    unlog::debug("{}", msg);
             });
 
             // apparently this option ensures request addresses are not weirdly capitalized
@@ -115,22 +115,22 @@ namespace wshttp
 
         void server::_close_request(request_id req_id)
         {
-            log->trace("{} called", __PRETTY_FUNCTION__);
+            unlog::trace("{} called", __PRETTY_FUNCTION__);
 
             _ep.loop()->call_soon([this, req_id]() mutable {
                 if (auto it = _requests.find(req_id); it != _requests.end())
                 {
                     _requests.erase(it);
-                    log->debug("Closed dns request id:{}", req_id);
+                    unlog::debug("Closed dns request id:{}", req_id);
                 }
                 else
-                    log->warn("Could not find dns request (id:{}) for closure!", req_id);
+                    unlog::warn("Could not find dns request (id:{}) for closure!", req_id);
             });
         }
 
         void server::_dns_request_init(dns_request_cb hook, domain_host host)
         {
-            log->trace("{} called", __PRETTY_FUNCTION__);
+            unlog::trace("{} called", __PRETTY_FUNCTION__);
 
             auto [it, _] = _requests.emplace(dns_request::make(++next_request_id, std::move(hook)));
 
@@ -139,7 +139,7 @@ namespace wshttp
                 _close_request(req_id);
             };
 
-            log->trace("Initiating dns request id:{}", next_request_id);
+            unlog::trace("Initiating dns request id:{}", next_request_id);
 
             evutil_addrinfo hints{};
 

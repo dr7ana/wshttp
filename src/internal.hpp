@@ -34,7 +34,7 @@ namespace wshttp
 
         std::error_code ec{errno, std::system_category()};
 
-        log->error(
+        unlog::error(
                 "Error code {} ({}) returned during {} (expected:{}, returned:{})",
                 ec.value(),
                 ec.message(),

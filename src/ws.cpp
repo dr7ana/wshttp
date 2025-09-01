@@ -27,7 +27,7 @@ namespace wshttp
     ws_session_base::ws_session_base(listener& l, ip_address remote, evhttp_request* req) :
             _l{l}, _path{ip_address{}, std::move(remote)}, _fd{detail::get_request_fd(req)}
     {
-        log->debug("New WS session has fd: {}", _fd);
+        unlog::debug("New WS session has fd: {}", _fd);
 
         _ws.reset(evws_new_session(req, ws_callbacks::msg_cb, this, 0));
 
@@ -36,27 +36,27 @@ namespace wshttp
 
         _path._local = ip_address::from_socket(_fd);
 
-        log->info("Successfully configured WS session; path: {}", _path);
+        unlog::info("Successfully configured WS session; path: {}", _path);
     }
 
     static constexpr auto close_ws_msg = "/quit"_usp;
 
     void ws_session_base::recv_msg(int /* type */, uspan data)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         if (data == close_ws_msg)
         {
-            log->info("Received close for WS session (remote:{})", _path.remote());
+            unlog::info("Received close for WS session (remote:{})", _path.remote());
             evws_close(_ws.get(), WS_CR_NORMAL);
         }
         else
-            log->info("Received WS session data: {}", buffer_printer{data});
+            unlog::info("Received WS session data: {}", buffer_printer{data});
     }
 
     void ws_session_base::close_session()
     {
-        log->info("Signalling listener to close WS session (remote:{})", _path.remote());
+        unlog::info("Signalling listener to close WS session (remote:{})", _path.remote());
 
         _l._ep.loop()->call_soon([this, remote = _path.remote()]() mutable { _l.close_ws(remote); });
     }

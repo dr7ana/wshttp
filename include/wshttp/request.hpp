@@ -135,9 +135,9 @@ namespace wshttp
 
         std::atomic<bool> _close_session_on_complete{false};
 
-        void populate_internals();
+        void populate_opts();
 
-        void populate_internals(request_opts opts);
+        void populate_opts(request_opts opts);
 
         void signal_close(bool close_session = false);
 

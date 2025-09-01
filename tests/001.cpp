@@ -175,4 +175,23 @@ namespace wshttp::test
         CHECK(v4_anyaddr.is_anyaddr());
         CHECK(!v4_not_anyaddr.is_anyaddr());
     }
+
+    TEST_CASE("001: Endpoint Creation", "[001][endoing]")
+    {
+        auto creds = ssl_creds::make();
+
+        SECTION("Endpoint owns its event loop")
+        {
+            auto ep = endpoint::make(creds);
+            REQUIRE(ep);
+        }
+        // SECTION("Application owns event loop")
+        // {
+        //     auto loop = event_loop::make();
+        //     REQUIRE(loop);
+
+        //     auto ep = endpoint::make(loop, creds);
+        //     REQUIRE(ep);
+        // }
+    }
 }  // namespace wshttp::test

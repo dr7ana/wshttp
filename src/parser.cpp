@@ -24,7 +24,7 @@ namespace wshttp
             ret = std::make_unique<url_result>(ada::parse<ada::url_aggregator>(input));
 
         if (not ret or not *ret)
-            log->warn("Parser failed to parse url input: {}", input);
+            unlog::warn("Parser failed to parse url input: {}", input);
 
         return ret;
     }

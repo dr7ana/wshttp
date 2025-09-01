@@ -32,6 +32,19 @@ namespace wshttp
             _init_internals();
         }
 
+        template <typename... Opt>
+            requires detail::require_one_of_is<std::shared_ptr<ssl_creds>, Opt...>
+        explicit endpoint(Opt&&... opts) :
+                _loop{event_loop::make()},
+                _dns{_loop->template make_shared<dns::server>(*this)},
+                caller_id{++next_caller_id}
+        {
+            if constexpr (sizeof...(opts))
+                handle_ep_opt(std::forward<Opt>(opts)...);
+
+            _init_internals();
+        }
+
       public:
         endpoint& operator=(endpoint) = delete;
         endpoint& operator=(endpoint&&) = delete;
@@ -39,13 +52,13 @@ namespace wshttp
         template <typename... Opt>
         [[nodiscard]] static std::shared_ptr<endpoint> make(Opt&&... args)
         {
-            return endpoint::make(event_loop::make(), std::forward<Opt>(args)...);
+            return std::shared_ptr<endpoint>(new endpoint{std::forward<Opt>(args)...});
         }
 
         template <typename... Opt>
         [[nodiscard]] static std::shared_ptr<endpoint> make(std::shared_ptr<event_loop> ev_loop, Opt&&... args)
         {
-            return ev_loop->template make_shared<endpoint>(std::move(ev_loop), std::forward<Opt>(args)...);
+            return std::shared_ptr<endpoint>(new endpoint{std::move(ev_loop), std::forward<Opt>(args)...});
         }
 
         ~endpoint();
@@ -76,16 +89,22 @@ namespace wshttp
 
         void _print_stats();
 
-        bool _listen(ip_address addr);
+        bool _listen(ip_address addr, std::optional<inbound_opts> opts = std::nullopt);
 
         bool _request(std::string_view uri, METHOD method, std::optional<session_opts> opts = std::nullopt);
 
         // bool _request(std::string_view uri, METHOD method);
 
       public:
-        bool listen(ip_v ip, uint16_t port) { return _listen(ip_address{ip, port}); }
+        bool listen(ip_v ip, uint16_t port, std::optional<inbound_opts> opts = std::nullopt)
+        {
+            return _listen(ip_address{ip, port}, std::move(opts));
+        }
 
-        bool listen(uint16_t port) { return _listen(ip_address{port}); }
+        bool listen(uint16_t port, std::optional<inbound_opts> opts = std::nullopt)
+        {
+            return _listen(ip_address{port}, std::move(opts));
+        }
 
         // template <supported_method M, typename... Arg>
         // bool request(std::string_view uri, M method, Arg... args)
@@ -99,20 +118,10 @@ namespace wshttp
         std::shared_ptr<outbound_session> initiate_session(
                 std::string_view uri, std::optional<session_opts> opts = std::nullopt);
 
-        bool request(std::string_view uri, METHOD method, session_opts opts)
+        bool request(std::string_view uri, METHOD method, std::optional<session_opts> opts = std::nullopt)
         {
             return _request(uri, method, std::move(opts));
         }
-
-        // bool request(std::string_view uri, METHOD method, request_opts opts) { return _request(uri, method); }
-
-        bool request(std::string_view uri, METHOD method) { return _request(uri, method); }
-
-        bool test_get(std::string_view uri) { return _request(uri, METHOD::GET); }
-
-        void test_extract_method(std::string url1, std::string url2, std::string url3);
-
-        void test_parse_method(std::string url);
 
         const std::shared_ptr<event_loop>& loop() { return _loop; }
 

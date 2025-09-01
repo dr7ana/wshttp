@@ -37,12 +37,12 @@ int main(int argc, char* argv[])
 
     session_opts sopts{[](std::vector<char> buf) {
         // std::fwrite(buf.data(), buf.size(), 1, stderr);
-        wshttp::log->info("User supplied session callback invoked! Received {}B payload", buf.size());
+        wshttp::unlog::info("User supplied session callback invoked! Received {}B payload", buf.size());
     }};
 
     request_opts ropts{[](std::vector<char> buf) {
         // std::fwrite(buf.data(), buf.size(), 1, stderr);
-        wshttp::log->info("User supplied request callback invoked! Received {}B payload", buf.size());
+        wshttp::unlog::info("User supplied request callback invoked! Received {}B payload", buf.size());
     }};
 
     try
@@ -55,17 +55,13 @@ int main(int argc, char* argv[])
 
         auto session = ep->initiate_session("https://www.google.com", std::move(sopts));
 
-        // ep->test_extract_method("https://www.google.com", "https://www.reddit.com", "https://www.nytimes.com");
-        // ep->test_parse_method("https://www.google.com");
         session->request(METHOD::GET);
         session->request(METHOD::GET, std::move(ropts));
         session->request(METHOD::GET, request_opts{hdr_flags::CLOSE});
-        // ep->test_get("https://www.google.com");
-        // ep->test_get("http://www.google.com");
     }
     catch (const std::exception& e)
     {
-        wshttp::log->critical("Test endpoint runtime exception: {}", e.what());
+        wshttp::unlog::critical("Test endpoint runtime exception: {}", e.what());
         return 1;
     }
 

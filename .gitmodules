@@ -1,6 +1,3 @@
-[submodule "external/spdlog"]
-	path = external/spdlog
-	url = https://github.com/gabime/spdlog.git
 [submodule "tests/CLI11"]
 	path = tests/CLI11
 	url = https://github.com/CLIUtils/CLI11.git
@@ -13,3 +10,6 @@
 [submodule "external/ada"]
 	path = external/ada
 	url = https://github.com/ada-url/ada.git
+[submodule "external/unlog"]
+	path = external/unlog
+	url = https://github.com/dr7ana/unlog.git

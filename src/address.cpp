@@ -70,7 +70,7 @@ namespace wshttp
         }
         catch (const std::exception& e)
         {
-            log->critical("uri parse exception: {}", e.what());
+            unlog::critical("uri parse exception: {}", e.what());
         }
 
         return ret;
@@ -96,7 +96,7 @@ namespace wshttp
         // if (auto s = evhttp_uri_get_scheme(_evuri.get()); !s)
         //     throw std::invalid_argument{"evhttp failed to parse uri scheme (given:{})"_format(input)};
 
-        log->info("parsed url: {}", url().get_href());
+        unlog::info("parsed url: {}", url().get_href());
     }
 
     void uri::_populate_internals()
@@ -136,7 +136,7 @@ namespace wshttp
         _pathquery += url().get_pathname();
         _pathquery += url().get_search();
 
-        log->trace("uri pathquery: {}", _pathquery);
+        unlog::trace("uri pathquery: {}", _pathquery);
 
         auto p = url().get_port();
 
@@ -156,12 +156,12 @@ namespace wshttp
         else
             _port = std::atoi(p.data());
 
-        log->trace("port set to {}", url().get_port());
+        unlog::trace("port set to {}", url().get_port());
     }
 
     uri::~uri()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
     }
 
     domain_host uri::host_domain() const
@@ -171,7 +171,7 @@ namespace wshttp
 
     void uri::set_path(std::string_view path)
     {
-        log->debug("New path to query: {}", path);
+        unlog::debug("New path to query: {}", path);
         _pathquery.clear();
         _pathquery += path;
     }

@@ -60,16 +60,16 @@ namespace wshttp
 
     void request_callbacks::req_done_cb(struct evhttp_request* req, void* user_arg)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
-        log->critical("ptr hash: {}", hash_reqptr(req));
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
+        unlog::critical("ptr hash: {}", hash_reqptr(req));
         return detail::_get_request(user_arg)->request_recv(req);
     }
 
     void request_callbacks::req_error_cb(evhttp_request_error ec, void* user_arg)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
-        log->info("HTTP request error: {}", detail::evreq_err_str(ec));
+        unlog::info("HTTP request error: {}", detail::evreq_err_str(ec));
         return detail::_get_request(user_arg)->test_method();
     }
 
@@ -84,11 +84,11 @@ namespace wshttp
             throw std::runtime_error{"Outbound request failed to make new evhttp_request object!"};
 
         if (opts)
-            populate_internals(std::move(*opts));
+            populate_opts(std::move(*opts));
         else
-            populate_internals();
+            populate_opts();
 
-        log->critical("ptr hash: {}", hash_reqptr(_req.get()));
+        unlog::critical("ptr hash: {}", hash_reqptr(_req.get()));
 
         evhttp_request_own(_req.get());
         assert(evhttp_request_is_owned(_req.get()));
@@ -116,19 +116,19 @@ namespace wshttp
 
     http_request::~http_request()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
     }
 
-    void http_request::populate_internals()
+    void http_request::populate_opts()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
         _type = _session._default_type;
         _hook = _session.make_req_data_caller();
     }
 
-    void http_request::populate_internals(request_opts opts)
+    void http_request::populate_opts(request_opts opts)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         if (opts.media_type)
             _type = *opts.media_type;
@@ -142,7 +142,7 @@ namespace wshttp
 
         if (opts.flags & std::to_underlying(hdr_flags::CLOSE))
         {
-            log->critical("GOOD");
+            unlog::critical("GOOD");
             _close_session_on_complete = true;
         }
     }
@@ -158,7 +158,7 @@ namespace wshttp
         }
         catch (const std::exception& e)
         {
-            log->critical("http_request construction exception: {}", e.what());
+            unlog::critical("http_request construction exception: {}", e.what());
         }
 
         return ret;
@@ -168,45 +168,45 @@ namespace wshttp
     {
         if (close_session)
         {
-            log->debug("Signalling outbound termination of remote session");
+            unlog::debug("Signalling outbound termination of remote session");
             _session.close();
         }
         else
         {
-            log->debug("Signalling outbound session to close completed request (id:{})", _request_id);
+            unlog::debug("Signalling outbound session to close completed request (id:{})", _request_id);
             _session.close_request(_request_id);
         }
     }
 
     void http_request::set_close_on_complete()
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
         _close_session_on_complete = true;
     }
 
     void http_request::test_method()
     {
-        log->critical("inner ptr hash: {}", hash_reqptr(_req.get()));
+        unlog::critical("inner ptr hash: {}", hash_reqptr(_req.get()));
     }
 
     void http_request::request_recv(struct evhttp_request* req)
     {
-        log->trace("{} called", __PRETTY_FUNCTION__);
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         if (!req || !evhttp_request_get_response_code(req))
         {
-            log->info("closing http request id:{}", _request_id);
+            unlog::info("closing http request id:{}", _request_id);
             return signal_close();
         }
 
         if (!_req || !evhttp_request_get_response_code(_req.get()))
         {
-            log->critical("ERROR: inner http req ptr is gone? Shutting down session");
+            unlog::critical("ERROR: inner http req ptr is gone? Shutting down session");
             return signal_close(true);
         }
 
-        log->critical("function ptr hash: {}", hash_reqptr(req));
-        log->critical("inner ptr hash: {}", hash_reqptr(_req.get()));
+        unlog::critical("function ptr hash: {}", hash_reqptr(req));
+        unlog::critical("inner ptr hash: {}", hash_reqptr(_req.get()));
 
         int code1{evhttp_request_get_response_code(req)};
         std::string_view line1{evhttp_request_get_response_code_line(req)};
@@ -220,9 +220,9 @@ namespace wshttp
 
         int nread = evbuffer_get_length(evbuffer);
 
-        log->debug("bufsize={}, code={}, line={}", nread == nread_comp, code == code1, line == line1);
+        unlog::debug("bufsize={}, code={}, line={}", nread == nread_comp, code == code1, line == line1);
 
-        log->info(
+        unlog::info(
                 "Request (remote:{}) received response:[ payload:{}B | code:{} | line: {} ]",
                 _uri->hview(),
                 nread,
@@ -233,14 +233,14 @@ namespace wshttp
 
         if (evbuffer_remove(evbuffer, buf.data(), nread) < 0)
         {
-            log->critical("Buffer error: failed to remove request data from evbuffer!");
+            unlog::critical("Buffer error: failed to remove request data from evbuffer!");
             return signal_close(true);
         }
 
         if (buf.back() != '\n')
             buf.push_back('\n');
 
-        log->debug("{}B read from request response body (id:{})", nread, _request_id);
+        unlog::debug("{}B read from request response body (id:{})", nread, _request_id);
 
         if (_hook)
             _hook(std::move(buf));

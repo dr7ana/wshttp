@@ -14,16 +14,16 @@ namespace wshttp
             switch (severity)
             {
                 case EVENT_LOG_ERR:
-                    log->error("{}", msg);
+                    unlog::error("{}", msg);
                     return;
                 case EVENT_LOG_WARN:
-                    log->warn("{}", msg);
+                    unlog::warn("{}", msg);
                     return;
                 case EVENT_LOG_MSG:
-                    log->info("{}", msg);
+                    unlog::info("{}", msg);
                     return;
                 case EVENT_LOG_DEBUG:
-                    log->debug("{}", msg);
+                    unlog::debug("{}", msg);
                     return;
             }
             std::abort();
@@ -55,12 +55,12 @@ namespace wshttp
             auto* self = reinterpret_cast<ev_watcher*>(user_arg);
             if (not self->f)
             {
-                log->critical("Ticker does not have a callback to execute!");
+                unlog::critical("Ticker does not have a callback to execute!");
                 return;
             }
             if (not self->is_running())
             {
-                log->critical("Ticker attempting to execute finished event!");
+                unlog::critical("Ticker attempting to execute finished event!");
                 return;
             }
             // execute callback
@@ -68,7 +68,7 @@ namespace wshttp
         }
         catch (const std::exception& e)
         {
-            log->critical("EventTicker caught exception: {}", e.what());
+            unlog::critical("EventTicker caught exception: {}", e.what());
         }
     }
 
@@ -79,7 +79,7 @@ namespace wshttp
             auto* self = reinterpret_cast<ev_watcher*>(user_arg);
             if (not self->f)
             {
-                log->critical("Ticker does not have a callback to execute!");
+                unlog::critical("Ticker does not have a callback to execute!");
                 return;
             }
             // execute callback
@@ -87,7 +87,7 @@ namespace wshttp
         }
         catch (const std::exception& e)
         {
-            log->critical("Ticker caught exception: {}", e.what());
+            unlog::critical("Ticker caught exception: {}", e.what());
         }
     }
 
@@ -98,7 +98,7 @@ namespace wshttp
 
         if (event_add(ev.get(), &interval) != 0)
         {
-            log->critical("EventHandler failed to start repeating event!");
+            unlog::critical("EventHandler failed to start repeating event!");
             return false;
         }
 
@@ -114,7 +114,7 @@ namespace wshttp
 
         if (event_del(ev.get()) != 0)
         {
-            log->critical("EventHandler failed to pause repeating event!");
+            unlog::critical("EventHandler failed to pause repeating event!");
             return false;
         }
 
@@ -156,7 +156,7 @@ namespace wshttp
                         auto* self = reinterpret_cast<ev_watcher*>(s);
                         if (not self->f)
                         {
-                            log->critical("Ticker does not have a callback to execute!");
+                            unlog::critical("Ticker does not have a callback to execute!");
                             return;
                         }
                         // execute callback
@@ -164,13 +164,13 @@ namespace wshttp
                     }
                     catch (const std::exception& e)
                     {
-                        log->critical("Ticker caught exception: {}", e.what());
+                        unlog::critical("Ticker caught exception: {}", e.what());
                     }
                 },
                 this));
 
         if ((one_off or start_immediately) and not start())
-            log->critical("Failed to immediately start one-off event!");
+            unlog::critical("Failed to immediately start one-off event!");
     }
 
     ev_watcher::~ev_watcher()
@@ -197,7 +197,12 @@ namespace wshttp
         static std::array<int, 2> features{EV_FEATURE_ET, 0};
         static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
 
-        log->trace(
+        "Starting libevent {}; fuck you {}"_trace("hi", "bye");
+
+        // trace_log(
+        //         "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ",
+        //         "));
+        unlog::trace(
                 "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
 
         std::unique_ptr<event_config, decltype(&event_config_free)> ev_conf{event_config_new(), event_config_free};
@@ -211,7 +216,7 @@ namespace wshttp
 
             if (auto base = event_base_new_with_config(ev_conf.get()))
             {
-                log->debug("Edge-triggered IO {}abled for libevent event base...", feature ? "en" : "dis");
+                unlog::debug("Edge-triggered IO {}abled for libevent event base...", feature ? "en" : "dis");
                 return base;
             }
         }
@@ -221,14 +226,14 @@ namespace wshttp
 
     event_loop::event_loop()
     {
-        log->trace("Beginning loop context creation with new ev loop thread");
+        unlog::trace("Beginning loop context creation with new ev loop thread");
 
 #ifdef _WIN32
         {
             WSADATA ignored;
             if (int err = WSAStartup(MAKEWORD(2, 2), &ignored); err != 0)
             {
-                log->critical("WSAStartup failed to initialize the windows socket layer ({:x})", err);
+                unlog::critical("WSAStartup failed to initialize the windows socket layer ({:x})", err);
                 throw std::runtime_error{"Unable to initialize windows socket layer"};
             }
         }
@@ -250,29 +255,29 @@ namespace wshttp
 
         ev_loop = std::shared_ptr<event_base>{try_make_et_evbase(), event_base_free};
 
-        log->debug("Started libevent loop with backend {}", event_base_get_method(ev_loop.get()));
+        unlog::debug("Started libevent loop with backend {}", event_base_get_method(ev_loop.get()));
 
         setup_job_waker();
 
         std::promise<void> p;
 
         loop_thread.emplace([this, &p]() mutable {
-            log->debug("Starting event loop run");
+            unlog::debug("Starting event loop run");
             p.set_value();
             event_base_loop(ev_loop.get(), EVLOOP_NO_EXIT_ON_EMPTY);
-            log->debug("Event loop run returned, thread finished");
+            unlog::debug("Event loop run returned, thread finished");
         });
 
         loop_thread_id = loop_thread->get_id();
         p.get_future().get();
 
         running.store(true);
-        log->info("loop is started");
+        unlog::info("loop is started");
     }
 
     event_loop::~event_loop()
     {
-        log->info("Shutting down loop...");
+        unlog::info("Shutting down loop...");
 
         stop_thread();
 
@@ -287,7 +292,7 @@ namespace wshttp
             });
         }
 
-        log->info("Loop shutdown complete");
+        unlog::info("Loop shutdown complete");
 
 #ifdef _WIN32
         WSACleanup();
@@ -296,7 +301,7 @@ namespace wshttp
 
     void event_loop::stop_thread(bool immediate)
     {
-        log->debug("Stopping loop thread...");
+        unlog::debug("Stopping loop thread...");
         if (loop_thread)
             immediate ? event_base_loopbreak(ev_loop.get()) : event_base_loopexit(ev_loop.get(), nullptr);
 
@@ -348,7 +353,7 @@ namespace wshttp
                 -1,
                 0,
                 [](evutil_socket_t, short, void* self) {
-                    log->trace("processing job queue");
+                    unlog::trace("processing job queue");
                     static_cast<event_loop*>(self)->process_job_queue();
                 },
                 this));
@@ -357,7 +362,7 @@ namespace wshttp
 
     void event_loop::process_job_queue()
     {
-        log->trace("Event loop processing job queue");
+        unlog::trace("Event loop processing job queue");
         assert(in_event_loop());
 
         decltype(job_queue) swapped_queue;
