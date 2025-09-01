@@ -2,10 +2,7 @@
 
 #include "types.hpp"
 
-#include <fmt/format.h>
-#include <spdlog/sinks/dist_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/spdlog.h>
+#include <unlog.hpp>
 
 #include <source_location>
 
@@ -41,7 +38,7 @@ namespace wshttp
         explicit buffer_printer(std::basic_string<T>&& buf) = delete;
 
         // Constructed from any type of span
-        template <const_span_type T>
+        template <unlog::const_span_type T>
         explicit buffer_printer(const T& data) : buffer_printer{data.data(), data.size()}
         {}
 

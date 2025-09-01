@@ -6,7 +6,7 @@
 
 namespace wshttp
 {
-    using namespace wshttp::literals;
+    using namespace unlog::literals;
 
     caller_id_t endpoint::next_caller_id = 0;
 

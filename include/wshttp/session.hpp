@@ -5,7 +5,7 @@
 
 namespace wshttp
 {
-    using namespace wshttp::literals;
+    using namespace unlog::literals;
 
     namespace deleters
     {

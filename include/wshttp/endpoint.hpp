@@ -7,7 +7,7 @@
 
 namespace wshttp
 {
-    using namespace wshttp::literals;
+    using namespace unlog::literals;
 
     struct ssl_creds;
     class listener;

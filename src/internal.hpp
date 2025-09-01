@@ -11,7 +11,7 @@ extern "C" {
 
 namespace wshttp
 {
-    using namespace wshttp::literals;
+    using namespace unlog::literals;
 
     static constexpr auto HTTPS_S = "https:"sv;
     static constexpr auto HTTP_S = "http:"sv;
