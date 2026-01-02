@@ -1,0 +1,18 @@
+diff --git a/MODULE.bazel b/MODULE.bazel
+new file mode 100644
+index 00000000..051259ae
+--- /dev/null
++++ b/MODULE.bazel
+@@ -0,0 +1,12 @@
++module(
++    name = "libevent",
++    version = "2.2.1-alpha",
++    compatibility_level = 1,
++)
++
++bazel_dep(name = "openssl", version = "3.3.1.bcr.1")
++bazel_dep(name = "platforms", version = "0.0.10")
++bazel_dep(name = "rules_cc", version = "0.2.13")
++bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
++bazel_dep(name = "rules_license", version = "1.0.0")
++bazel_dep(name = "zlib", version = "1.3.1.bcr.4")

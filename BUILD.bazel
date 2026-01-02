@@ -1,0 +1,23 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+cc_library(
+    name = "libwshttp",
+    srcs = glob([
+        "src/**/*.cpp",
+        "src/**/*.hpp",
+    ]),
+    hdrs = glob([
+        "include/**/*.hpp",
+    ]),
+    includes = [
+        "include",
+        "include/wshttp",
+    ],
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        "@ada-url",
+        "@libevent//:event",
+        "@unlog//:libunlog",
+    ],
+)

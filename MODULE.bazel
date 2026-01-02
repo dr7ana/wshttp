@@ -1,0 +1,27 @@
+module(
+    name = "wshttp",
+    version = "0.0.1",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.13")
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+bazel_dep(name = "unlog", version = "0.0.1")
+git_override(
+    module_name = "unlog",
+    commit = "a397f67187eafda05de1bd4ea3f699c5f73067b8",
+    init_submodules = True,
+    remote = "https://github.com/dr7ana/unlog",
+)
+
+bazel_dep(name = "libevent", version = "2.2.1-alpha")
+git_override(
+    module_name = "libevent",
+    build_file = "external/libevent.BUILD",
+    commit = "c4ea8028e08a63db5541344aacd1f18011026101",
+    patch_args = ["-p1"],
+    patches = ["external/patches/libevent_module.patch"],
+    remote = "https://github.com/libevent/libevent",
+)
+
+bazel_dep(name = "ada-url", version = "3.3.0")
+bazel_dep(name = "cli11", version = "2.5.0")
