@@ -5,17 +5,13 @@
 
 #include <bitset>
 
-namespace wshttp
-{
-    namespace deleters
-    {
-        struct _evconn
-        {
+namespace wshttp {
+    namespace deleters {
+        struct _evconn {
             inline void operator()(::evhttp_connection* c) const { evhttp_connection_free(c); }
         };
 
-        struct _evreq
-        {
+        struct _evreq {
             inline void operator()(::evhttp_request* r) const { evhttp_request_free(r); }
         };
     }  // namespace deleters
@@ -95,8 +91,7 @@ namespace wshttp
      */
 
     // wrapper for am evhttp_request
-    struct http_request
-    {
+    struct http_request {
         http_request() = delete;
 
         static http_req_ptr construct(
@@ -148,8 +143,7 @@ namespace wshttp
 
         void request_recv(struct evhttp_request* req);
 
-        auto operator<=>(const http_request& req) const
-        {
+        auto operator<=>(const http_request& req) const {
             return std::tie(_request_id, *_uri) <=> std::tie(req._request_id, *req._uri);
         }
         bool operator==(const http_request& req) const { return (*this <=> req) == 0; }
@@ -157,8 +151,7 @@ namespace wshttp
 
         template <typename T, typename U = std::remove_cv_t<T>>
             requires std::same_as<U, evhttp_request>
-        operator T*()
-        {
+        operator T*() {
             return _req.get();
         }
 
@@ -170,8 +163,7 @@ namespace wshttp
         return reinterpret_cast<std::uintptr_t>(r);
     };
 
-    struct request_ptr_comp
-    {
+    struct request_ptr_comp {
         using is_transparent = void;
 
         bool operator()(const http_req_ptr& lhs, const http_req_ptr& rhs) const noexcept { return *lhs == *rhs; }
@@ -181,8 +173,7 @@ namespace wshttp
         bool operator()(evhttp_request* lhs, const http_req_ptr& rhs) const noexcept { return lhs == *rhs; }
     };
 
-    struct request_ptr_hash
-    {
+    struct request_ptr_hash {
         using is_transparent = void;
         using transparent_key_eq = request_ptr_comp;
 
@@ -196,8 +187,7 @@ namespace wshttp
 
 }  //  namespace wshttp
 
-namespace std
-{
+namespace std {
     // template <>
     // struct hash<wshttp::http_req_ptr>
     // {

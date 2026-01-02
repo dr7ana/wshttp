@@ -14,14 +14,11 @@ extern "C" {
 #include <memory>
 #include <thread>
 
-namespace wshttp
-{
+namespace wshttp {
     class event_loop;
 
-    namespace deleters
-    {
-        struct _event
-        {
+    namespace deleters {
+        struct _event {
             inline void operator()(::event* e) const { ::event_free(e); }
         };
     }  // namespace deleters
@@ -33,8 +30,7 @@ namespace wshttp
 
     using caller_id_t = uint16_t;
 
-    struct ev_watcher
-    {
+    struct ev_watcher {
         friend class event_loop;
         friend struct loop_callbacks;
 
@@ -76,8 +72,7 @@ namespace wshttp
         bool stop();
     };
 
-    class event_loop final
-    {
+    class event_loop final {
         friend class endpoint;
 
         event_loop();
@@ -108,8 +103,7 @@ namespace wshttp
         const std::shared_ptr<::event_base>& loop() const { return ev_loop; }
 
         template <typename Callable>
-        void call(Callable&& f)
-        {
+        void call(Callable&& f) {
             if (in_event_loop())
                 f();
             else
@@ -117,8 +111,7 @@ namespace wshttp
         }
 
         template <typename Callable, typename Ret = decltype(std::declval<Callable>()())>
-        Ret call_get(Callable&& f)
-        {
+        Ret call_get(Callable&& f) {
             if (in_event_loop())
                 return f();
 
@@ -126,18 +119,14 @@ namespace wshttp
             auto fut = prom.get_future();
 
             call_soon([&f, &prom] {
-                try
-                {
+                try {
                     if constexpr (!std::is_void_v<Ret>)
                         prom.set_value(f());
-                    else
-                    {
+                    else {
                         f();
                         prom.set_value();
                     }
-                }
-                catch (...)
-                {
+                } catch (...) {
                     prom.set_exception(std::current_exception());
                 }
             });
@@ -161,18 +150,15 @@ namespace wshttp
         */
         template <typename Callable>
         [[nodiscard]] std::shared_ptr<ev_watcher> call_every(
-                std::chrono::microseconds interval, Callable&& f, bool start_immediately = true, bool wait = false)
-        {
+                std::chrono::microseconds interval, Callable&& f, bool start_immediately = true, bool wait = false) {
             return _call_every(interval, std::forward<Callable>(f), event_loop::loop_id, start_immediately, wait);
         }
 
         template <std::invocable Callable>
-        void call_later(std::chrono::microseconds delay, Callable hook)
-        {
+        void call_later(std::chrono::microseconds delay, Callable hook) {
             if (in_event_loop())
                 add_oneshot_event(delay, std::move(hook));
-            else
-            {
+            else {
                 call_soon([this, func = std::move(hook), target_time = detail::get_time() + delay]() mutable {
                     auto now = detail::get_time();
 
@@ -187,8 +173,7 @@ namespace wshttp
         }
 
         template <std::invocable Callable>
-        void call_soon(Callable f)
-        {
+        void call_soon(Callable f) {
             {
                 std::lock_guard lock{job_queue_mutex};
                 job_queue.emplace(std::move(f));
@@ -199,8 +184,7 @@ namespace wshttp
 
       private:
         template <std::invocable Callable>
-        void add_oneshot_event(std::chrono::microseconds delay, Callable hook)
-        {
+        void add_oneshot_event(std::chrono::microseconds delay, Callable hook) {
             auto handler = make_handler(event_loop::loop_id);
             auto& h = *handler;
 
@@ -226,15 +210,13 @@ namespace wshttp
         // Returns a pointer deleter that defers the actual destruction call to this network
         // object's event loop.
         template <typename T>
-        auto loop_deleter()
-        {
+        auto loop_deleter() {
             return [this](T* ptr) { call([ptr] { delete ptr; }); };
         }
 
         // Returns a pointer deleter that defers invocation of a custom deleter to the event loop
         template <typename T, std::invocable<T*> Callable>
-        auto wrapped_deleter(Callable f)
-        {
+        auto wrapped_deleter(Callable f) {
             return [this, func = std::move(f)](T* ptr) mutable {
                 return call_get([f = std::move(func), ptr]() { return f(ptr); });
             };
@@ -244,8 +226,7 @@ namespace wshttp
         // custom deleter that dispatches actual object destruction to the network's event loop for
         // thread safety.
         template <typename T, typename... Args>
-        std::shared_ptr<T> make_shared(Args&&... args)
-        {
+        std::shared_ptr<T> make_shared(Args&&... args) {
             auto* ptr = new T{std::forward<Args>(args)...};
             return std::shared_ptr<T>{ptr, loop_deleter<T>()};
         }
@@ -254,8 +235,7 @@ namespace wshttp
         // construction of the object, it creates the shared_ptr from the already created object ptr
         // and wraps the object's deleter in a wrapped_deleter
         template <typename T, typename Callable>
-        std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter)
-        {
+        std::shared_ptr<T> shared_ptr(T* obj, Callable&& deleter) {
             return std::shared_ptr<T>(obj, wrapped_deleter<T>(std::forward<Callable>(deleter)));
         }
 
@@ -270,8 +250,7 @@ namespace wshttp
                 Callable&& f,
                 caller_id_t _id,
                 bool start_immediately,
-                bool fixed_interval)
-        {
+                bool fixed_interval) {
             auto h = make_handler(_id);
 
             h->init_event(loop(), interval, std::forward<Callable>(f), false, start_immediately, fixed_interval);

@@ -3,20 +3,17 @@
 #include "address.hpp"
 #include "internal.hpp"
 
-namespace wshttp
-{
+namespace wshttp {
     std::shared_ptr<url_parser> parser = url_parser::make();
 
-    std::shared_ptr<url_parser> url_parser::make()
-    {
+    std::shared_ptr<url_parser> url_parser::make() {
         static std::shared_ptr<url_parser> p;
         if (not p)
             p = std::shared_ptr<url_parser>{new url_parser{}};
         return p;
     }
 
-    url_result_ptr url_parser::parse(std::string_view input, const url_result_ptr& base)
-    {
+    url_result_ptr url_parser::parse(std::string_view input, const url_result_ptr& base) {
         url_result_ptr ret = nullptr;
         if (base)
             ret = std::make_unique<url_result>(ada::parse<ada::url_aggregator>(input, &base->value()));

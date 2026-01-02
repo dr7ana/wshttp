@@ -8,24 +8,20 @@ extern "C" {
 #include <event2/dns_struct.h>
 }
 
-namespace wshttp
-{
+namespace wshttp {
     struct dns_callbacks;
     class endpoint;
 
-    namespace dns
-    {
+    namespace dns {
         using request_id = uint32_t;
         using dns_request_cb = std::function<void()>;
 
-        struct dns_request
-        {
+        struct dns_request {
             friend class server;
             friend struct dnsreq_ptr_hash;
             friend struct dnsreq_ptr_comp;
 
-            static std::unique_ptr<dns_request> make(request_id rid, dns_request_cb cb)
-            {
+            static std::unique_ptr<dns_request> make(request_id rid, dns_request_cb cb) {
                 return std::unique_ptr<dns_request>(new dns_request{rid, std::move(cb)});
             }
 
@@ -41,29 +37,24 @@ namespace wshttp
             bool operator==(request_id rid) const { return id == rid; }
         };
 
-        struct dnsreq_ptr_comp
-        {
+        struct dnsreq_ptr_comp {
             using is_transparent = void;
 
             bool operator()(
-                    const std::unique_ptr<dns_request>& lhs, const std::unique_ptr<dns_request>& rhs) const noexcept
-            {
+                    const std::unique_ptr<dns_request>& lhs, const std::unique_ptr<dns_request>& rhs) const noexcept {
                 return *lhs == *rhs;
             }
 
-            bool operator()(const std::unique_ptr<dns_request>& lhs, request_id rhs) const noexcept
-            {
+            bool operator()(const std::unique_ptr<dns_request>& lhs, request_id rhs) const noexcept {
                 return *lhs == rhs;
             }
 
-            bool operator()(request_id lhs, const std::unique_ptr<dns_request>& rhs) const noexcept
-            {
+            bool operator()(request_id lhs, const std::unique_ptr<dns_request>& rhs) const noexcept {
                 return *rhs == lhs;
             }
         };
 
-        struct dnsreq_ptr_hash
-        {
+        struct dnsreq_ptr_hash {
             using is_transparent = void;
             using transparent_key_eq = dnsreq_ptr_comp;
 
@@ -76,8 +67,7 @@ namespace wshttp
         using dnsreq_ptr_set =
                 std::unordered_set<std::unique_ptr<dns_request>, dnsreq_ptr_hash, dnsreq_ptr_hash::transparent_key_eq>;
 
-        class server final
-        {
+        class server final {
             friend class wshttp::endpoint;
             friend struct wshttp::dns_callbacks;
 
@@ -108,15 +98,13 @@ namespace wshttp
           public:
             template <typename T>
                 requires std::same_as<T, ::evdns_base>
-            operator const T*() const
-            {
+            operator const T*() const {
                 return _evdns.get();
             }
 
             template <typename T>
                 requires std::same_as<T, ::evdns_base>
-            operator T*()
-            {
+            operator T*() {
                 return _evdns.get();
             }
 

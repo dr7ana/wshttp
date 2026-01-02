@@ -2,17 +2,14 @@
 
 #include "internal.hpp"
 
-namespace wshttp
-{
-    static auto setup_libevent_logging()
-    {
+namespace wshttp {
+    static auto setup_libevent_logging() {
 #ifndef NDEBUG
         // event_enable_debug_logging(EVENT_DBG_ALL);
 #endif
 
         event_set_log_callback([](int severity, const char* msg) {
-            switch (severity)
-            {
+            switch (severity) {
                 case EVENT_LOG_ERR:
                     unlog::error("{}", msg);
                     return;
@@ -41,63 +38,49 @@ namespace wshttp
                 - this is an equally annoying typedef for `suseconds_t`
         Alas, yet again another mac idiosyncrasy...
      */
-    timeval loop_time_to_timeval(std::chrono::microseconds t)
-    {
+    timeval loop_time_to_timeval(std::chrono::microseconds t) {
         return timeval{
                 .tv_sec = static_cast<decltype(timeval::tv_sec)>(t / 1s),
                 .tv_usec = static_cast<decltype(timeval::tv_usec)>((t % 1s) / 1us)};
     }
 
-    void loop_callbacks::exec_iterative(int /* fd */, short /* what */, void* user_arg)
-    {
-        try
-        {
+    void loop_callbacks::exec_iterative(int /* fd */, short /* what */, void* user_arg) {
+        try {
             auto* self = reinterpret_cast<ev_watcher*>(user_arg);
-            if (not self->f)
-            {
+            if (not self->f) {
                 unlog::critical("Ticker does not have a callback to execute!");
                 return;
             }
-            if (not self->is_running())
-            {
+            if (not self->is_running()) {
                 unlog::critical("Ticker attempting to execute finished event!");
                 return;
             }
             // execute callback
             self->fire();
-        }
-        catch (const std::exception& e)
-        {
+        } catch (const std::exception& e) {
             unlog::critical("EventTicker caught exception: {}", e.what());
         }
     }
 
-    void loop_callbacks::exec_oneshot(int /* fd */, short /* what */, void* user_arg)
-    {
-        try
-        {
+    void loop_callbacks::exec_oneshot(int /* fd */, short /* what */, void* user_arg) {
+        try {
             auto* self = reinterpret_cast<ev_watcher*>(user_arg);
-            if (not self->f)
-            {
+            if (not self->f) {
                 unlog::critical("Ticker does not have a callback to execute!");
                 return;
             }
             // execute callback
             self->f();
-        }
-        catch (const std::exception& e)
-        {
+        } catch (const std::exception& e) {
             unlog::critical("Ticker caught exception: {}", e.what());
         }
     }
 
-    bool ev_watcher::start()
-    {
+    bool ev_watcher::start() {
         if (_is_running)
             return false;
 
-        if (event_add(ev.get(), &interval) != 0)
-        {
+        if (event_add(ev.get(), &interval) != 0) {
             unlog::critical("EventHandler failed to start repeating event!");
             return false;
         }
@@ -107,13 +90,11 @@ namespace wshttp
         return true;
     }
 
-    bool ev_watcher::stop()
-    {
+    bool ev_watcher::stop() {
         if (not _is_running)
             return false;
 
-        if (event_del(ev.get()) != 0)
-        {
+        if (event_del(ev.get()) != 0) {
             unlog::critical("EventHandler failed to pause repeating event!");
             return false;
         }
@@ -123,8 +104,7 @@ namespace wshttp
         return true;
     }
 
-    void ev_watcher::fire()
-    {
+    void ev_watcher::fire() {
         f();
         event_del(ev.get());
         event_add(ev.get(), &interval);
@@ -136,8 +116,7 @@ namespace wshttp
             std::function<void()> task,
             bool one_off,
             bool start_immediately,
-            bool fixed_interval)
-    {
+            bool fixed_interval) {
         f = (one_off or not fixed_interval) ? std::move(task) : [this, func = std::move(task)]() mutable {
             func();
             event_del(ev.get());
@@ -151,19 +130,15 @@ namespace wshttp
                 -1,
                 fixed_interval ? 0 : EV_PERSIST,
                 [](evutil_socket_t, short, void* s) {
-                    try
-                    {
+                    try {
                         auto* self = reinterpret_cast<ev_watcher*>(s);
-                        if (not self->f)
-                        {
+                        if (not self->f) {
                             unlog::critical("Ticker does not have a callback to execute!");
                             return;
                         }
                         // execute callback
                         self->f();
-                    }
-                    catch (const std::exception& e)
-                    {
+                    } catch (const std::exception& e) {
                         unlog::critical("Ticker caught exception: {}", e.what());
                     }
                 },
@@ -173,35 +148,26 @@ namespace wshttp
             unlog::critical("Failed to immediately start one-off event!");
     }
 
-    ev_watcher::~ev_watcher()
-    {
+    ev_watcher::~ev_watcher() {
         ev.reset();
         f = nullptr;
     }
 
-    static std::vector<std::string_view> get_ev_methods()
-    {
+    static std::vector<std::string_view> get_ev_methods() {
         std::vector<std::string_view> ev_methods_avail;
         for (const char** methods = event_get_supported_methods(); methods && *methods; methods++)
             ev_methods_avail.emplace_back(*methods);
         return ev_methods_avail;
     }
 
-    std::shared_ptr<event_loop> event_loop::make()
-    {
+    std::shared_ptr<event_loop> event_loop::make() {
         return std::shared_ptr<event_loop>{new event_loop{}};
     }
 
-    static struct event_base* try_make_et_evbase()
-    {
+    static struct event_base* try_make_et_evbase() {
         static std::array<int, 2> features{EV_FEATURE_ET, 0};
         static std::vector<std::string_view> ev_methods_avail = get_ev_methods();
 
-        "Starting libevent {}; fuck you {}"_trace("hi", "bye");
-
-        // trace_log(
-        //         "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ",
-        //         "));
         unlog::trace(
                 "Starting libevent {}; available backends: {}", event_get_version(), fmt::join(ev_methods_avail, ", "));
 
@@ -210,12 +176,10 @@ namespace wshttp
         event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_NO_CACHE_TIME);
         event_config_set_flag(ev_conf.get(), EVENT_BASE_FLAG_EPOLL_USE_CHANGELIST);
 
-        for (auto& feature : features)
-        {
+        for (auto& feature : features) {
             event_config_require_features(ev_conf.get(), feature);
 
-            if (auto base = event_base_new_with_config(ev_conf.get()))
-            {
+            if (auto base = event_base_new_with_config(ev_conf.get())) {
                 unlog::debug("Edge-triggered IO {}abled for libevent event base...", feature ? "en" : "dis");
                 return base;
             }
@@ -224,23 +188,20 @@ namespace wshttp
         throw std::runtime_error{"Failed to create edge-triggered or standard I/O event base!"};
     }
 
-    event_loop::event_loop()
-    {
+    event_loop::event_loop() {
         unlog::trace("Beginning loop context creation with new ev loop thread");
 
 #ifdef _WIN32
         {
             WSADATA ignored;
-            if (int err = WSAStartup(MAKEWORD(2, 2), &ignored); err != 0)
-            {
+            if (int err = WSAStartup(MAKEWORD(2, 2), &ignored); err != 0) {
                 unlog::critical("WSAStartup failed to initialize the windows socket layer ({:x})", err);
                 throw std::runtime_error{"Unable to initialize windows socket layer"};
             }
         }
 #endif
 
-        if (static bool once = false; !once)
-        {
+        if (static bool once = false; !once) {
             once = true;
             setup_libevent_logging();
             detail::setup_ssl_library();
@@ -275,17 +236,14 @@ namespace wshttp
         unlog::info("loop is started");
     }
 
-    event_loop::~event_loop()
-    {
+    event_loop::~event_loop() {
         unlog::info("Shutting down loop...");
 
         stop_thread();
 
-        for (auto& [id, list] : tickers)
-        {
+        for (auto& [id, list] : tickers) {
             std::for_each(list.begin(), list.end(), [](auto& t) {
-                if (auto tick = t.lock())
-                {
+                if (auto tick = t.lock()) {
                     tick->f = nullptr;
                     tick->stop();
                 }
@@ -299,8 +257,7 @@ namespace wshttp
 #endif
     }
 
-    void event_loop::stop_thread(bool immediate)
-    {
+    void event_loop::stop_thread(bool immediate) {
         unlog::debug("Stopping loop thread...");
         if (loop_thread)
             immediate ? event_base_loopbreak(ev_loop.get()) : event_base_loopexit(ev_loop.get(), nullptr);
@@ -309,12 +266,9 @@ namespace wshttp
             loop_thread->join();
     }
 
-    void event_loop::clear_old_tickers()
-    {
-        for (auto& [id, list] : tickers)
-        {
-            for (auto itr = list.begin(); itr != list.end();)
-            {
+    void event_loop::clear_old_tickers() {
+        for (auto& [id, list] : tickers) {
+            for (auto itr = list.begin(); itr != list.end();) {
                 if (itr->expired())
                     itr = list.erase(itr);
                 else
@@ -323,22 +277,17 @@ namespace wshttp
         }
     }
 
-    std::shared_ptr<ev_watcher> event_loop::make_handler(caller_id_t _id)
-    {
+    std::shared_ptr<ev_watcher> event_loop::make_handler(caller_id_t _id) {
         clear_old_tickers();
         auto t = make_shared<ev_watcher>();
         tickers[_id].push_back(t);
         return t;
     }
 
-    void event_loop::stop_tickers(caller_id_t id)
-    {
-        if (auto it = tickers.find(id); it != tickers.end())
-        {
-            for (auto& t : it->second)
-            {
-                if (auto tick = t.lock())
-                {
+    void event_loop::stop_tickers(caller_id_t id) {
+        if (auto it = tickers.find(id); it != tickers.end()) {
+            for (auto& t : it->second) {
+                if (auto tick = t.lock()) {
                     tick->f = nullptr;
                     tick->stop();
                 }
@@ -346,8 +295,7 @@ namespace wshttp
         }
     }
 
-    void event_loop::setup_job_waker()
-    {
+    void event_loop::setup_job_waker() {
         job_waker.reset(event_new(
                 ev_loop.get(),
                 -1,
@@ -360,8 +308,7 @@ namespace wshttp
         assert(job_waker);
     }
 
-    void event_loop::process_job_queue()
-    {
+    void event_loop::process_job_queue() {
         unlog::trace("Event loop processing job queue");
         assert(in_event_loop());
 
@@ -372,8 +319,7 @@ namespace wshttp
             job_queue.swap(swapped_queue);
         }
 
-        while (not swapped_queue.empty())
-        {
+        while (not swapped_queue.empty()) {
             auto job = swapped_queue.front();
             swapped_queue.pop();
             job();

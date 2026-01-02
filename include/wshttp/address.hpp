@@ -24,8 +24,7 @@
                 - On subsequent requests, only this portion is needed
 */
 
-namespace wshttp
-{
+namespace wshttp {
     struct domain_host;
 
     enum class SCHEME : uint8_t { UNSUPPORTED = 0, HTTPS = 1, HTTP = 2, WSS = 3, WS = 4 };
@@ -33,10 +32,8 @@ namespace wshttp
     template <typename T>
     concept supported_scheme = std::is_same_v<T, SCHEME> && requires(T a) { std::to_underlying(a) > 0; };
 
-    namespace deleters
-    {
-        struct _evuri
-        {
+    namespace deleters {
+        struct _evuri {
             inline void operator()(::evhttp_uri* u) const { evhttp_uri_free(u); }
         };
     }  // namespace deleters
@@ -47,8 +44,7 @@ namespace wshttp
 
     using evuri_ptr = std::shared_ptr<::evhttp_uri>;
 
-    struct uri
-    {
+    struct uri {
         uri() = delete;
 
         static uri_ptr make(std::string_view input, const url_result_ptr& base = nullptr);
@@ -108,8 +104,7 @@ namespace wshttp
         static constexpr bool to_string_formattable = true;
     };
 
-    struct domain_host final
-    {
+    struct domain_host final {
         domain_host() = delete;
 
       protected:
@@ -132,23 +127,20 @@ namespace wshttp
         friend struct uri;
     };
 
-    struct ipv4
-    {
+    struct ipv4 {
         // host order
         uint32_t addr;
 
         constexpr ipv4() = default;
 
-        explicit constexpr ipv4(const struct sockaddr_in* in) : addr{std::move(in->sin_addr.s_addr)}
-        {
+        explicit constexpr ipv4(const struct sockaddr_in* in) : addr{std::move(in->sin_addr.s_addr)} {
             enc::big_to_host_inplace(addr);
         }
 
         explicit ipv4(const std::string& str);
 
         constexpr ipv4(uint8_t a, uint8_t b, uint8_t c, uint8_t d) :
-                addr{uint32_t{a} << 24 | uint32_t{b} << 16 | uint32_t{c} << 8 | uint32_t{d}}
-        {}
+                addr{uint32_t{a} << 24 | uint32_t{b} << 16 | uint32_t{c} << 8 | uint32_t{d}} {}
 
         in_addr to_inaddr() const;
 
@@ -164,14 +156,12 @@ namespace wshttp
         static constexpr bool to_string_formattable = true;
     };
 
-    struct ipv6
-    {
+    struct ipv6 {
         std::array<uint16_t, 8> addr{};
 
         constexpr ipv6() = default;
 
-        explicit constexpr ipv6(const struct sockaddr_in6* in6)
-        {
+        explicit constexpr ipv6(const struct sockaddr_in6* in6) {
             std::ranges::move(in6->sin6_addr.s6_addr16, addr.begin());
             for (int i = 0; i < 8; ++i)
                 enc::big_to_host_inplace(addr[i]);
@@ -188,8 +178,7 @@ namespace wshttp
                 uint16_t f = 0x0000,
                 uint16_t g = 0x0000,
                 uint16_t h = 0x0000) :
-                addr{a, b, c, d, e, f, g, h}
-        {}
+                addr{a, b, c, d, e, f, g, h} {}
 
         in6_addr to_in6addr() const;
 
@@ -207,13 +196,11 @@ namespace wshttp
 
     inline constexpr ipv6 ipv6_anyaddr{0, 0, 0, 0, 0, 0, 0, 0};
 
-    constexpr bool ipv4::is_anyaddr() const
-    {
+    constexpr bool ipv4::is_anyaddr() const {
         return *this == ipv4_anyaddr;
     }
 
-    constexpr bool ipv6::is_anyaddr() const
-    {
+    constexpr bool ipv6::is_anyaddr() const {
         return *this == ipv6_anyaddr;
     }
 
@@ -222,14 +209,12 @@ namespace wshttp
 
     using ip_v = std::variant<ipv4, ipv6>;
 
-    struct ip_address
-    {
+    struct ip_address {
         constexpr ip_address(uint16_t p = 0) : _ip{ipv4_anyaddr}, _port{p}, _is_v4{true}, _is_anyaddr(true) {}
 
         explicit ip_address(const struct sockaddr* in);
 
-        explicit constexpr ip_address(ip_v ip, uint16_t port) : _ip{ip}, _port{port}, _is_v4{!_ip.index()}
-        {
+        explicit constexpr ip_address(ip_v ip, uint16_t port) : _ip{ip}, _port{port}, _is_v4{!_ip.index()} {
             if (std::holds_alternative<ipv4>(_ip))
                 _is_anyaddr = _ipv4().is_anyaddr();
             else
@@ -239,14 +224,12 @@ namespace wshttp
         ip_address(const ip_address& a) { _copy_internals(a); }
         ip_address(ip_address& a) { _copy_internals(a); }
 
-        ip_address& operator=(ip_address& a)
-        {
+        ip_address& operator=(ip_address& a) {
             _copy_internals(a);
             return *this;
         }
 
-        ip_address& operator=(const ip_address& a)
-        {
+        ip_address& operator=(const ip_address& a) {
             _copy_internals(a);
             return *this;
         }
@@ -266,8 +249,7 @@ namespace wshttp
         bool _is_v4{true};
         bool _is_anyaddr{true};
 
-        void _copy_internals(const ip_address& a)
-        {
+        void _copy_internals(const ip_address& a) {
             using ip_t = decltype(a._ip);
             _ip = ip_t{a._ip};
             _port = a._port;
@@ -297,15 +279,13 @@ namespace wshttp
         operator in6_addr() const { return _ipv6().to_in6addr(); }
     };
 
-    struct path
-    {
+    struct path {
         path() = default;
 
         path(const ip_address& local, const ip_address& remote) : _local{local}, _remote{remote} {}
         path(const path& p) : path{p._local, p._remote} {}
 
-        path& operator=(const path& p)
-        {
+        path& operator=(const path& p) {
             _local = p._local;
             _remote = p._remote;
             return *this;
@@ -325,19 +305,15 @@ namespace wshttp
 
 }  //  namespace wshttp
 
-namespace std
-{
+namespace std {
     template <>
-    struct hash<wshttp::ipv4>
-    {
+    struct hash<wshttp::ipv4> {
         size_t operator()(const wshttp::ipv4& v4) const noexcept { return hash<uint32_t>{}(v4.addr); }
     };
 
     template <>
-    struct hash<wshttp::ipv6>
-    {
-        size_t operator()(const wshttp::ipv6& v6) const noexcept
-        {
+    struct hash<wshttp::ipv6> {
+        size_t operator()(const wshttp::ipv6& v6) const noexcept {
             size_t h{};
             for (const auto& v : v6.addr)
                 h ^= hash<uint16_t>{}(v) + wshttp::inverse_golden_ratio + (h << 6) + (h >> 2);
@@ -346,10 +322,8 @@ namespace std
     };
 
     template <>
-    struct hash<wshttp::ip_address>
-    {
-        size_t operator()(const wshttp::ip_address& ip) const noexcept
-        {
+    struct hash<wshttp::ip_address> {
+        size_t operator()(const wshttp::ip_address& ip) const noexcept {
             size_t h{};
 
             if (auto maybe_v4 = std::get_if<wshttp::ipv4>(&ip._ip))
@@ -363,16 +337,13 @@ namespace std
     };
 
     template <>
-    struct hash<wshttp::uri>
-    {
+    struct hash<wshttp::uri> {
         size_t operator()(const wshttp::uri& u) const noexcept { return hash<string_view>{}(u.view()); }
     };
 
     template <>
-    struct hash<wshttp::domain_host>
-    {
-        size_t operator()(const wshttp::domain_host& u) const noexcept
-        {
+    struct hash<wshttp::domain_host> {
+        size_t operator()(const wshttp::domain_host& u) const noexcept {
             auto h = hash<string_view>{}(u.host());
             h ^= hash<int>{}(u.port()) + wshttp::inverse_golden_ratio + (h << 7) + (h >> 3);
             return h;

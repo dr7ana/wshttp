@@ -9,10 +9,8 @@ extern "C" {
 #include <event2/listener.h>
 }
 
-namespace wshttp
-{
-    class socket_interface
-    {
+namespace wshttp {
+    class socket_interface {
       protected:
         virtual SSL* new_ssl() = 0;
         virtual bufferevent* new_bev(bool) = 0;
@@ -24,15 +22,12 @@ namespace wshttp
     struct inbound_session;
     struct ws_session_base;
 
-    namespace deleters
-    {
-        struct _evconnlistener
-        {
+    namespace deleters {
+        struct _evconnlistener {
             inline void operator()(::evconnlistener* e) const { ::evconnlistener_free(e); }
         };
 
-        struct _evhttp
-        {
+        struct _evhttp {
             inline void operator()(::evhttp* e) const { return evhttp_free(e); }
         };
     }  // namespace deleters
@@ -40,8 +35,7 @@ namespace wshttp
     using tcp_listener = std::unique_ptr<evconnlistener, deleters::_evconnlistener>;
     using evhttp_ptr = std::unique_ptr<::evhttp, deleters::_evhttp>;
 
-    class listener final : public socket_interface
-    {
+    class listener final : public socket_interface {
         friend struct inbound_session;
         friend struct ws_session_base;
         friend class endpoint;
@@ -50,8 +44,7 @@ namespace wshttp
 
         explicit listener(endpoint& e, ip_address bind, std::optional<inbound_opts> opts = std::nullopt);
         explicit listener(endpoint& e, uint16_t p, std::optional<inbound_opts> opts = std::nullopt) :
-                listener{e, ip_address{p}, std::move(opts)}
-        {}
+                listener{e, ip_address{p}, std::move(opts)} {}
 
       public:
         listener() = delete;

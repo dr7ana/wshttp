@@ -2,8 +2,7 @@
 
 using namespace wshttp;
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
     std::signal(SIGPIPE, SIG_IGN);
     // std::signal(SIGINT, signal_handler);
 
@@ -17,16 +16,13 @@ int main(int argc, char* argv[])
     cli.add_option("-K, --keyfile", key_path, "Path to private key file") /* ->required() */;
     cli.add_option("-C, --certfile", cert_path, "Path to cert file") /* ->required() */;
 
-    try
-    {
+    try {
         cli.parse(argc, argv);
-    }
-    catch (const CLI::ParseError& e)
-    {
+    } catch (const CLI::ParseError& e) {
         return cli.exit(e);
     }
 
-    wshttp::log->set_level(log_level);
+    unlog::set_default_level(parse_log_level(log_level));
 
     std::shared_ptr<ssl_creds> creds;
 
@@ -37,16 +33,15 @@ int main(int argc, char* argv[])
 
     session_opts sopts{[](std::vector<char> buf) {
         // std::fwrite(buf.data(), buf.size(), 1, stderr);
-        wshttp::unlog::info("User supplied session callback invoked! Received {}B payload", buf.size());
+        unlog::info("User supplied session callback invoked! Received {}B payload", buf.size());
     }};
 
     request_opts ropts{[](std::vector<char> buf) {
         // std::fwrite(buf.data(), buf.size(), 1, stderr);
-        wshttp::unlog::info("User supplied request callback invoked! Received {}B payload", buf.size());
+        unlog::info("User supplied request callback invoked! Received {}B payload", buf.size());
     }};
 
-    try
-    {
+    try {
         ep = endpoint::make(loop, creds);
 
         ep->listen(5544);
@@ -58,10 +53,8 @@ int main(int argc, char* argv[])
         session->request(METHOD::GET);
         session->request(METHOD::GET, std::move(ropts));
         session->request(METHOD::GET, request_opts{hdr_flags::CLOSE});
-    }
-    catch (const std::exception& e)
-    {
-        wshttp::unlog::critical("Test endpoint runtime exception: {}", e.what());
+    } catch (const std::exception& e) {
+        unlog::critical("Test endpoint runtime exception: {}", e.what());
         return 1;
     }
 

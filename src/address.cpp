@@ -3,12 +3,9 @@
 #include "internal.hpp"
 // #include "parser.hpp"
 
-namespace wshttp
-{
-    namespace detail
-    {
-        static void parse_addr(int af, void* dest, const std::string& from)
-        {
+namespace wshttp {
+    namespace detail {
+        static void parse_addr(int af, void* dest, const std::string& from) {
             auto rv = inet_pton(af, from.c_str(), dest);
 
             if (rv == 0)
@@ -29,8 +26,7 @@ namespace wshttp
     static constexpr auto ws_scheme = "ws"sv, ws_scheme_d = "ws:"sv;
     static constexpr auto wss_scheme = "wss"sv, wss_scheme_d = "wss:"sv;
 
-    static constexpr auto str_to_scheme(std::string_view s)
-    {
+    static constexpr auto str_to_scheme(std::string_view s) {
         if (s == https_scheme_d)
             return SCHEME::HTTPS;
         else if (s == http_scheme_d)
@@ -43,10 +39,8 @@ namespace wshttp
             return SCHEME::UNSUPPORTED;
     }
 
-    static constexpr auto scheme_to_str(SCHEME s)
-    {
-        switch (s)
-        {
+    static constexpr auto scheme_to_str(SCHEME s) {
+        switch (s) {
             case SCHEME::HTTP:
                 return http_scheme;
             case SCHEME::HTTPS:
@@ -60,24 +54,19 @@ namespace wshttp
         }
     }
 
-    uri_ptr uri::make(std::string_view input, const url_result_ptr& base)
-    {
+    uri_ptr uri::make(std::string_view input, const url_result_ptr& base) {
         uri_ptr ret = nullptr;
 
-        try
-        {
+        try {
             ret = std::make_shared<uri>(input, base);
-        }
-        catch (const std::exception& e)
-        {
+        } catch (const std::exception& e) {
             unlog::critical("uri parse exception: {}", e.what());
         }
 
         return ret;
     }
 
-    uri::uri(std::string_view input, const url_result_ptr& base)
-    {
+    uri::uri(std::string_view input, const url_result_ptr& base) {
         if (input.size() >= MAX_URI_LEN)
             throw std::invalid_argument{"uri length must be <= 4096 (given:{})"_format(input.size())};
 
@@ -99,8 +88,7 @@ namespace wshttp
         unlog::info("parsed url: {}", url().get_href());
     }
 
-    void uri::_populate_internals()
-    {
+    void uri::_populate_internals() {
         auto s = url().get_protocol();
 
         if (s.empty())
@@ -111,8 +99,7 @@ namespace wshttp
         if (_scheme == SCHEME::UNSUPPORTED)
             throw std::invalid_argument{"uri must use protocol schemes HTTP/S or WS/S (given: {})"_format(s)};
 
-        if (!s.empty())
-        {
+        if (!s.empty()) {
 
             if (s == https_scheme_d)
                 _scheme = SCHEME::HTTPS, _use_tls = true;
@@ -140,15 +127,12 @@ namespace wshttp
 
         auto p = url().get_port();
 
-        if (p.empty())
-        {
-            if (_use_tls)
-            {
+        if (p.empty()) {
+            if (_use_tls) {
                 url().set_port(tls_port);
                 _port = 443;
             }
-            else
-            {
+            else {
                 url().set_port(notls_port);
                 _port = 80;
             }
@@ -159,27 +143,22 @@ namespace wshttp
         unlog::trace("port set to {}", url().get_port());
     }
 
-    uri::~uri()
-    {
+    uri::~uri() {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
     }
 
-    domain_host uri::host_domain() const
-    {
+    domain_host uri::host_domain() const {
         return domain_host{url().get_host(), _port};
     }
 
-    void uri::set_path(std::string_view path)
-    {
+    void uri::set_path(std::string_view path) {
         unlog::debug("New path to query: {}", path);
         _pathquery.clear();
         _pathquery += path;
     }
 
-    std::string_view uri::scheme() const
-    {
-        switch (_scheme)
-        {
+    std::string_view uri::scheme() const {
+        switch (_scheme) {
             case SCHEME::HTTP:
                 return http_scheme;
             case SCHEME::HTTPS:
@@ -193,36 +172,30 @@ namespace wshttp
         }
     }
 
-    std::string_view uri::view() const
-    {
+    std::string_view uri::view() const {
         return url().get_href();
     }
 
-    std::string uri::to_string() const
-    {
+    std::string uri::to_string() const {
         return "uri:[ {} ]"_format(url().get_href());
     }
 
-    std::string domain_host::to_string() const
-    {
+    std::string domain_host::to_string() const {
         return "{}:{}"_format(_host, _port);
     }
 
-    ipv4::ipv4(const std::string& str)
-    {
+    ipv4::ipv4(const std::string& str) {
         detail::parse_addr(AF_INET, &addr, str);
         enc::big_to_host_inplace(addr);
     }
 
-    in_addr ipv4::to_inaddr() const
-    {
+    in_addr ipv4::to_inaddr() const {
         in_addr a{};
         a.s_addr = enc::host_to_big(addr);
         return a;
     }
 
-    std::string ipv4::to_string() const
-    {
+    std::string ipv4::to_string() const {
         char buf[INET_ADDRSTRLEN] = {};
         uint32_t net = enc::host_to_big(addr);
         inet_ntop(AF_INET, &net, buf, sizeof(buf));
@@ -230,15 +203,13 @@ namespace wshttp
         return "{}"_format(buf);
     }
 
-    ipv6::ipv6(const std::string& str)
-    {
+    ipv6::ipv6(const std::string& str) {
         detail::parse_addr(AF_INET6, &addr, str);
         for (int i = 0; i < 8; ++i)
             enc::big_to_host_inplace(addr[i]);
     }
 
-    in6_addr ipv6::to_in6addr() const
-    {
+    in6_addr ipv6::to_in6addr() const {
         in6_addr ret{};
         std::ranges::copy(addr, ret.s6_addr16);
         for (int i = 0; i < 8; ++i)
@@ -247,8 +218,7 @@ namespace wshttp
         return ret;
     }
 
-    std::string ipv6::to_string() const
-    {
+    std::string ipv6::to_string() const {
         char buf[INET6_ADDRSTRLEN] = {};
 
         std::array<uint16_t, 8> temp{addr};
@@ -261,17 +231,14 @@ namespace wshttp
         return "{}"_format(buf);
     }
 
-    ip_address::ip_address(const struct sockaddr* in)
-    {
-        if (in->sa_family == AF_INET)
-        {
+    ip_address::ip_address(const struct sockaddr* in) {
+        if (in->sa_family == AF_INET) {
             auto* in4 = reinterpret_cast<const sockaddr_in*>(in);
             _ip = ipv4{in4}, _port = enc::big_to_host(in4->sin_port);
             _is_anyaddr = _ipv4().is_anyaddr();
             _is_v4 = true;
         }
-        else if (in->sa_family == AF_INET6)
-        {
+        else if (in->sa_family == AF_INET6) {
             auto* in6 = reinterpret_cast<const sockaddr_in6*>(in);
             _ip = ipv6{in6}, _port = enc::big_to_host(in6->sin6_port);
             _is_anyaddr = _ipv6().is_anyaddr();
@@ -281,8 +248,7 @@ namespace wshttp
             throw std::runtime_error{"Failed to understand incoming address sa_family: {}"_format(in->sa_family)};
     }
 
-    ip_address ip_address::from_socket(int fd)
-    {
+    ip_address ip_address::from_socket(int fd) {
         sockaddr bind{};
         socklen_t len = sizeof(bind);
 
@@ -293,13 +259,11 @@ namespace wshttp
         return ip_address{&bind};
     }
 
-    std::string ip_address::to_string() const
-    {
+    std::string ip_address::to_string() const {
         return "{}:{}"_format(_is_v4 ? _ipv4().to_string() : _ipv6().to_string(), _port);
     }
 
-    std::string path::to_string() const
-    {
+    std::string path::to_string() const {
         return "[ local:{} | remote:{} ]"_format(_local, _remote);
     }
 }  //  namespace wshttp

@@ -24,8 +24,7 @@ extern "C" {
 #include <unordered_set>
 #include <utility>
 
-namespace wshttp
-{
+namespace wshttp {
     using namespace std::literals;
     namespace fs = std::filesystem;
 
@@ -33,15 +32,13 @@ namespace wshttp
 
     inline constexpr size_t inverse_golden_ratio = sizeof(size_t) >= 8 ? 0x9e37'79b9'7f4a'7c15 : 0x9e37'79b9;
 
-    namespace detail
-    {
+    namespace detail {
         std::chrono::steady_clock::time_point get_time();
 
         std::string localhost_ip(uint16_t port);
 
         template <std::integral T>
-        constexpr bool increment_will_overflow(T val)
-        {
+        constexpr bool increment_will_overflow(T val) {
             return std::numeric_limits<T>::max() == val;
         }
     }  // namespace detail

@@ -4,14 +4,12 @@
 #include "internal.hpp"
 #include "request.hpp"
 
-namespace wshttp
-{
+namespace wshttp {
     using namespace unlog::literals;
 
     caller_id_t endpoint::next_caller_id = 0;
 
-    void endpoint::_init_internals()
-    {
+    void endpoint::_init_internals() {
         _stats = _loop->call_every(10s, [this]() { _print_stats(); });
         assert(_stats);
 
@@ -23,8 +21,7 @@ namespace wshttp
         unlog::trace("Client endpoint created with initialized event loop!");
     }
 
-    bool endpoint::_listen(ip_address addr, std::optional<inbound_opts> opts)
-    {
+    bool endpoint::_listen(ip_address addr, std::optional<inbound_opts> opts) {
         (void)opts;
         return _loop->call_get([&]() {
             auto [itr, b] = _listeners.try_emplace(addr, nullptr);
@@ -42,25 +39,21 @@ namespace wshttp
         });
     }
 
-    std::shared_ptr<outbound_session> endpoint::initiate_session(std::string_view u, std::optional<session_opts> opts)
-    {
+    std::shared_ptr<outbound_session> endpoint::initiate_session(std::string_view u, std::optional<session_opts> opts) {
         return _loop->call_get([&]() -> std::shared_ptr<outbound_session> {
             auto _uri = uri::make(u);
-            if (not _uri)
-            {
+            if (not _uri) {
                 unlog::warn("Outbound session must be initiated to a valid remote host (given: {})", u);
                 return nullptr;
             }
 
             auto [it, b] = _outbound_sessions.try_emplace(_uri->host_domain(), nullptr);
 
-            if (b)
-            {
+            if (b) {
                 unlog::info("Constructing outbound session to new remote domain: {}", _uri->hview());
                 it->second = make_shared<outbound_session>(*this, std::move(_uri), std::move(opts));
             }
-            else
-            {
+            else {
                 unlog::info("Outbound session already exists for remote domain: {}!", _uri->hview());
                 return nullptr;
             }
@@ -69,16 +62,14 @@ namespace wshttp
         });
     }
 
-    bool endpoint::_request(std::string_view u, METHOD method, std::optional<session_opts> opts)
-    {
+    bool endpoint::_request(std::string_view u, METHOD method, std::optional<session_opts> opts) {
         // TODO: make a :call(...)
         return _loop->call_get([&]() {
             auto _uri = uri::make(u);
 
             auto [it, b] = _outbound_sessions.try_emplace(_uri->host_domain(), nullptr);
 
-            if (b)
-            {
+            if (b) {
                 unlog::info("Constructing outbound session to new remote domain: {}", _uri->hview());
                 it->second = make_shared<outbound_session>(*this, std::move(_uri), std::move(opts));
             }
@@ -91,8 +82,7 @@ namespace wshttp
         });
     }
 
-    void endpoint::_print_stats()
-    {
+    void endpoint::_print_stats() {
         auto n_listeners = _listeners.size();
         auto n_remotes = _outbound_sessions.size();
         auto n_inbounds = _completed_inbounds.load();
@@ -106,8 +96,7 @@ namespace wshttp
                 n_outbounds);
     }
 
-    endpoint::~endpoint()
-    {
+    endpoint::~endpoint() {
         unlog::debug("Shutting down client...");
 
         if (not _close_immediately)
@@ -125,8 +114,7 @@ namespace wshttp
         unlog::info("Client shutdown complete!");
     }
 
-    void endpoint::close_listener(ip_address b)
-    {
+    void endpoint::close_listener(ip_address b) {
         assert(in_event_loop());
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         if (_listeners.erase(b))
@@ -135,12 +123,10 @@ namespace wshttp
             unlog::warn("Endpoint failed to find listener (bind: {}) to close!", b);
     }
 
-    void endpoint::close_outbound(const domain_host& remote)
-    {
+    void endpoint::close_outbound(const domain_host& remote) {
         assert(in_event_loop());
 
-        if (auto it = _outbound_sessions.find(remote); it != _outbound_sessions.end())
-        {
+        if (auto it = _outbound_sessions.find(remote); it != _outbound_sessions.end()) {
             _outbound_sessions.erase(it);
             ++_completed_outbounds;
             unlog::info("Endpoint closed outbound session to remote: {}", remote.host());
@@ -149,8 +135,7 @@ namespace wshttp
             unlog::warn("Endpoint failed to find any outbound sessions to remote: {}", remote.host());
     }
 
-    void endpoint::shutdown_endpoint()
-    {
+    void endpoint::shutdown_endpoint() {
         unlog::debug("{} called...", __PRETTY_FUNCTION__);
 
         std::promise<void> p;
@@ -166,18 +151,15 @@ namespace wshttp
         f.get();
     }
 
-    SSL_CTX* endpoint::inbound_ctx()
-    {
+    SSL_CTX* endpoint::inbound_ctx() {
         return _ctx->I();
     }
 
-    SSL_CTX* endpoint::outbound_ctx()
-    {
+    SSL_CTX* endpoint::outbound_ctx() {
         return _ctx->O();
     }
 
-    struct evhttp* endpoint::make_evhttp()
-    {
+    struct evhttp* endpoint::make_evhttp() {
         evhttp* e = evhttp_new(_loop->ev_loop.get());
 
         if (!e)
@@ -187,8 +169,7 @@ namespace wshttp
         return e;
     }
 
-    void endpoint::handle_ep_opt(std::shared_ptr<ssl_creds> c)
-    {
+    void endpoint::handle_ep_opt(std::shared_ptr<ssl_creds> c) {
         unlog::info("New endpoint configured with SSL credentials");
         _ctx = app_context::make(std::move(c));
     }

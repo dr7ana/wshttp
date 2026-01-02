@@ -4,8 +4,7 @@
 
 using namespace Catch::Clara;
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
     Catch::Session session;
 
     std::string log_level = "debug";
@@ -20,7 +19,7 @@ int main(int argc, char* argv[])
     if (int rc = session.applyCommandLine(argc, argv); rc != 0)
         return rc;
 
-    wshttp::log->set_level(log_level);
+    unlog::set_default_level(wshttp::parse_log_level(log_level));
 
     return session.run(argc, argv);
 }

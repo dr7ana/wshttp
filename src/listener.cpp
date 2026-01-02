@@ -4,74 +4,61 @@
 #include "internal.hpp"
 #include "ws.hpp"
 
-namespace wshttp
-{
-    namespace detail
-    {
-        static listener* _get_listener(void* user_arg)
-        {
+namespace wshttp {
+    namespace detail {
+        static listener* _get_listener(void* user_arg) {
             return static_cast<listener*>(user_arg);
         }
     }  // namespace detail
 
-    void listen_callbacks::gen_cb(struct evhttp_request* req, void* user_arg)
-    {
+    void listen_callbacks::gen_cb(struct evhttp_request* req, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         return detail::_get_listener(user_arg)->handle_request(req);
     }
 
-    bufferevent* listen_callbacks::bev_cb(struct event_base* /* ev */, void* user_arg)
-    {
+    bufferevent* listen_callbacks::bev_cb(struct event_base* /* ev */, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         return detail::_get_listener(user_arg)->new_bev();
     }
 
-    int listen_callbacks::newreq_cb(struct evhttp_request* req, void* user_arg)
-    {
+    int listen_callbacks::newreq_cb(struct evhttp_request* req, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         return detail::_get_listener(user_arg)->recv_request(req);
     }
 
-    void listen_callbacks::ws_cb(struct evhttp_request* req, void* user_arg)
-    {
+    void listen_callbacks::ws_cb(struct evhttp_request* req, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         return detail::_get_listener(user_arg)->ws_request(req);
     }
 
-    void listen_callbacks::close_cb(struct evhttp_connection* conn, void* user_arg)
-    {
+    void listen_callbacks::close_cb(struct evhttp_connection* conn, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         return detail::_get_listener(user_arg)->close_request(detail::get_connection_address(conn));
     }
 
     int listen_callbacks::error_cb(
-            struct evhttp_request* req, struct evbuffer* /* buffer */, int error, const char* reason, void* user_arg)
-    {
+            struct evhttp_request* req, struct evbuffer* /* buffer */, int error, const char* reason, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         return detail::_get_listener(user_arg)->request_error(req, error, reason);
     }
 
     listener::listener(endpoint& e, ip_address bind, std::optional<inbound_opts> opts) :
-            _ep{e}, _local{std::move(bind)}, _iopts{std::move(opts)}
-    {
+            _ep{e}, _local{std::move(bind)}, _iopts{std::move(opts)} {
         _init_internals();
     }
 
-    void listener::_init_internals()
-    {
+    void listener::_init_internals() {
         assert(_ep.in_event_loop());
 
         sockaddr saddr{};
 
-        if (_local.is_ipv4())
-        {
+        if (_local.is_ipv4()) {
             auto* in = reinterpret_cast<sockaddr_in*>(&saddr);
             in->sin_family = AF_INET;
             in->sin_addr = _local;  // operator in_addr()
             in->sin_port = enc::host_to_big(_local.port());
         }
-        else
-        {
+        else {
             auto* in6 = reinterpret_cast<sockaddr_in6*>(&saddr);
             in6->sin6_family = AF_INET6;
             in6->sin6_addr = _local;  // operator in6_addr()
@@ -112,33 +99,27 @@ namespace wshttp
         unlog::info("evhttp listener deployed on local bind: {}", _local);
     }
 
-    int listener::recv_request(struct evhttp_request* req)
-    {
+    int listener::recv_request(struct evhttp_request* req) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         auto remote = detail::get_request_address(req);
 
         auto [it, b] = _requests.try_emplace(remote, nullptr);
 
-        if (not b)
-        {
+        if (not b) {
             unlog::info("Closing inbound request from remote: {}", remote);
             return -1;
         }
 
-        try
-        {
+        try {
             it->second = _ep.template make_shared<inbound_session>(
                     /* *this,  */ std::move(remote), detail::get_request_fd(req));
-        }
-        catch (const std::exception& e)
-        {
+        } catch (const std::exception& e) {
             unlog::warn("Exception: {}", e.what());
             return -1;
         }
 
-        if (not it->second)
-        {
+        if (not it->second) {
             unlog::critical("Failed to make inbound request for remote: {}", it->first);
             return -1;
         }
@@ -150,8 +131,7 @@ namespace wshttp
         return 0;
     }
 
-    void listener::handle_request(struct evhttp_request* req)
-    {
+    void listener::handle_request(struct evhttp_request* req) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         auto remote = detail::get_request_address(req);
@@ -166,8 +146,7 @@ namespace wshttp
         evhttp_send_error(req, HTTP_FORBIDDEN, nullptr);
     }
 
-    int listener::request_error(struct evhttp_request* req, int error, const char* reason)
-    {
+    int listener::request_error(struct evhttp_request* req, int error, const char* reason) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         auto remote = detail::get_request_address(req);
@@ -176,32 +155,26 @@ namespace wshttp
         return -1;
     }
 
-    void listener::ws_request(struct evhttp_request* req)
-    {
+    void listener::ws_request(struct evhttp_request* req) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         auto remote = detail::get_request_address(req);
 
         auto [it, b] = _sessions.try_emplace(remote, nullptr);
 
-        if (not b)
-        {
+        if (not b) {
             unlog::info("Inbound WS session from already exists from remote: {}", remote);
             return evhttp_send_error(req, HTTP_INTERNAL, nullptr);
         }
 
-        try
-        {
+        try {
             it->second = _ep.template make_shared<ws_session_base>(*this, std::move(remote), req);
-        }
-        catch (const std::exception& e)
-        {
+        } catch (const std::exception& e) {
             unlog::warn("Exception: {}", e.what());
             return evhttp_send_error(req, HTTP_INTERNAL, nullptr);
         }
 
-        if (not it->second)
-        {
+        if (not it->second) {
             unlog::critical("Failed to make inbound WS session for remote: {}", it->first);
             return evhttp_send_error(req, HTTP_INTERNAL, nullptr);
         }
@@ -209,8 +182,7 @@ namespace wshttp
         unlog::debug("Successfully created inbound WS session for remote: {}", it->first);
     }
 
-    bufferevent* listener::new_bev(bool /* ssl */)
-    {
+    bufferevent* listener::new_bev(bool /* ssl */) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         auto bev = bufferevent_openssl_socket_new(
@@ -220,13 +192,11 @@ namespace wshttp
         return bev;
     }
 
-    listener::~listener()
-    {
+    listener::~listener() {
         unlog::debug("Closing listener on port: {}", _local.port());
     }
 
-    void listener::close_all()
-    {
+    void listener::close_all() {
         assert(_ep.in_event_loop());
         unlog::info("listener (port:{}) closing all sessions...", _local.port());
 
@@ -234,8 +204,7 @@ namespace wshttp
         _sessions.clear();
     }
 
-    void listener::close()
-    {
+    void listener::close() {
         unlog::warn("Evconnlistener error; signalling endpoint to close listener...");
 
         _ep.loop()->call_soon([wep = _ep.weak_from_this(), p = _local.port()]() mutable {
@@ -246,12 +215,10 @@ namespace wshttp
         });
     }
 
-    void listener::close_request(ip_address remote)
-    {
+    void listener::close_request(ip_address remote) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
-        if (_requests.erase(remote))
-        {
+        if (_requests.erase(remote)) {
             unlog::info("Listener closed session to remote: {}", remote);
             _ep._completed_inbounds += 1;
         }
@@ -259,12 +226,10 @@ namespace wshttp
             unlog::warn("Listener failed to find session (remote: {}) to close!", remote);
     }
 
-    void listener::close_ws(ip_address remote)
-    {
+    void listener::close_ws(ip_address remote) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
-        if (_sessions.erase(remote))
-        {
+        if (_sessions.erase(remote)) {
             unlog::info("Listener closed session to remote: {}", remote);
             _ep._completed_inbounds += 1;
         }
@@ -272,8 +237,7 @@ namespace wshttp
             unlog::warn("Listener failed to find session (remote: {}) to close!", remote);
     }
 
-    SSL* listener::new_ssl()
-    {
+    SSL* listener::new_ssl() {
         assert(_ep.in_event_loop());
         SSL* _ssl = SSL_new(_ep.inbound_ctx());
 

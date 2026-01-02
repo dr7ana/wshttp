@@ -2,12 +2,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-namespace wshttp::test
-{
-    TEST_CASE("001: Endian Flipping", "[001][endian]")
-    {
-        SECTION("Native <-> little endian")
-        {
+namespace wshttp::test {
+    TEST_CASE("001: Endian Flipping", "[001][endian]") {
+        SECTION("Native <-> little endian") {
             constexpr uint8_t constexpr_u8 = 0x01;
             constexpr uint16_t constexpr_u16 = 0x0123;
             constexpr uint32_t constexpr_u32 = 0x01234567;
@@ -69,8 +66,7 @@ namespace wshttp::test
             CHECK(u64 == 0x0123456789abcdef);
         }
 
-        SECTION("Native <-> big endian")
-        {
+        SECTION("Native <-> big endian") {
             constexpr uint8_t constexpr_u8 = 0x01;
             constexpr uint16_t constexpr_u16 = 0x0123;
             constexpr uint32_t constexpr_u32 = 0x01234567;
@@ -133,8 +129,7 @@ namespace wshttp::test
         }
     }
 
-    TEST_CASE("001: Address Types", "[001][address][types]")
-    {
+    TEST_CASE("001: Address Types", "[001][address][types]") {
         auto v4_str = "10.0.0.0"s;
 
         auto v4_base = ipv4(10, 0, 0, 0);
@@ -176,22 +171,21 @@ namespace wshttp::test
         CHECK(!v4_not_anyaddr.is_anyaddr());
     }
 
-    TEST_CASE("001: Endpoint Creation", "[001][endoing]")
-    {
+    TEST_CASE("001: Endpoint Creation", "[001][endoing]") {
         auto creds = ssl_creds::make();
 
-        SECTION("Endpoint owns its event loop")
-        {
+        SECTION("Endpoint owns its event loop") {
             auto ep = endpoint::make(creds);
             REQUIRE(ep);
         }
-        // SECTION("Application owns event loop")
-        // {
-        //     auto loop = event_loop::make();
-        //     REQUIRE(loop);
 
-        //     auto ep = endpoint::make(loop, creds);
-        //     REQUIRE(ep);
-        // }
+        SECTION("Application owns event loop") {
+            auto loop = event_loop::make();
+            REQUIRE(loop);
+
+            auto ep = endpoint::make(loop, creds);
+            REQUIRE(ep);
+            REQUIRE(ep->loop() == loop);
+        }
     }
 }  // namespace wshttp::test

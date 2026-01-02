@@ -3,27 +3,22 @@
 #include "opts.hpp"
 #include "request.hpp"
 
-namespace wshttp
-{
+namespace wshttp {
     using namespace unlog::literals;
 
-    namespace deleters
-    {
-        struct _bufferevent
-        {
+    namespace deleters {
+        struct _bufferevent {
             inline void operator()(::bufferevent* b) const { bufferevent_free(b); }
         };
     }  // namespace deleters
 
     using bufferevent_ptr = std::unique_ptr<::bufferevent, deleters::_bufferevent>;
 
-    struct session_base
-    {
+    struct session_base {
         //
     };
 
-    struct inbound_session
-    {
+    struct inbound_session {
         friend class listener;
 
         explicit inbound_session(
@@ -77,13 +72,11 @@ namespace wshttp
             - interface base class for outbound_session to be derived from
             - pure virtual methods to be exposed publicly
      */
-    struct session_interface
-    {
+    struct session_interface {
         //
     };
 
-    class outbound_session final : public socket_interface
-    {
+    class outbound_session final : public socket_interface {
       protected:
         explicit outbound_session(endpoint& ep, uri_ptr u, std::optional<session_opts> opts = std::nullopt);
 
@@ -152,8 +145,7 @@ namespace wshttp
         friend class event_loop;
     };
 
-    struct outbound_ptr_comp
-    {
+    struct outbound_ptr_comp {
         using is_transparent = void;
 
         // bool operator()(const std::shared_ptr<outbound_session>& lhs, const std::shared_ptr<outbound_session>& rhs)
@@ -173,8 +165,7 @@ namespace wshttp
         // }
     };
 
-    struct outbound_ptr_hash
-    {
+    struct outbound_ptr_hash {
         using is_transparent = void;
         using transparent_key_eq = outbound_ptr_comp;
 

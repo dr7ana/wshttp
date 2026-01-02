@@ -2,17 +2,13 @@
 
 #include "internal.hpp"
 
-namespace wshttp
-{
-    namespace detail
-    {
-        const char* current_error()
-        {
+namespace wshttp {
+    namespace detail {
+        const char* current_error() {
             return ERR_error_string(ERR_get_error(), nullptr);
         }
 
-        void setup_ssl_library()
-        {
+        void setup_ssl_library() {
             OPENSSL_init_ssl(0, NULL);
             SSL_load_error_strings();
             OpenSSL_add_all_algorithms();
@@ -51,8 +47,7 @@ namespace wshttp
         return {static_cast<unsigned char>(*counter >> 8), static_cast<unsigned char>(*counter)};
     };
 
-    static void set_sslopts(::SSL_CTX* ctx, bool outbound)
-    {
+    static void set_sslopts(::SSL_CTX* ctx, bool outbound) {
         assert(ctx != nullptr);
 
         SSL_CTX_set_options(
@@ -83,17 +78,13 @@ namespace wshttp
             unsigned char* outlen,
             const unsigned char* in,
             unsigned int inlen,
-            void* /* user_arg */)
-    {
+            void* /* user_arg */) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
-        for (const auto& a : H2_ALPNS)
-        {
-            unlog::trace("Seeking ALPN: {}", a);
-            for (auto *curr = in, *end = in + inlen; curr + a.size() <= end; curr += *curr + 1)
-            {
-                if (uspan input{curr, curr + *curr + 1}; a == input)
-                {
+        for (const auto& a : H2_ALPNS) {
+            unlog::trace("Seeking ALPN: {}", buffer_printer{a});
+            for (auto *curr = in, *end = in + inlen; curr + a.size() <= end; curr += *curr + 1) {
+                if (uspan input{curr, curr + *curr + 1}; a == input) {
                     *out = curr + 1;
                     *outlen = *curr;
                     unlog::debug("Client alpn ({}) matched local alpn proto: {}", input, a);
@@ -114,13 +105,11 @@ namespace wshttp
     static constexpr auto CERT_ORG = "wshttp"_usp;
     static constexpr auto CERT_CN = "localhost"_usp;
 
-    x509_cert_keypair::x509_cert_keypair()
-    {
+    x509_cert_keypair::x509_cert_keypair() {
         _init_internals();
     }
 
-    void x509_cert_keypair::_init_internals()
-    {
+    void x509_cert_keypair::_init_internals() {
         pk.reset(EVP_RSA_gen(RSA_KEYSIZE));
 
         if (!pk)
@@ -157,8 +146,7 @@ namespace wshttp
     }
 
     cert_pk_file_pair::cert_pk_file_pair(const std::string_view& keyfile, const std::string_view& certfile) :
-            key{keyfile}, cert{certfile}
-    {
+            key{keyfile}, cert{certfile} {
         if (key.is_relative())
             key = fs::absolute(key);
         if (cert.is_relative())
@@ -166,13 +154,10 @@ namespace wshttp
     }
 
     ssl_creds::ssl_creds(const std::string_view& keyfile, const std::string_view& certfile) :
-            storage{cert_pk_file_pair{keyfile, certfile}}
-    {}
+            storage{cert_pk_file_pair{keyfile, certfile}} {}
 
-    void ssl_creds::configure_ssl_ctx(SSL_CTX* inbound, SSL_CTX* outbound)
-    {
-        if (storage.index())
-        {
+    void ssl_creds::configure_ssl_ctx(SSL_CTX* inbound, SSL_CTX* outbound) {
+        if (storage.index()) {
             // index != 0 -> variant holds generated x509_cert_keypair
             auto [cert, pk] = std::get<x509_cert_keypair>(storage).cert_keypair();
             assert(cert != nullptr && pk != nullptr);
@@ -187,8 +172,7 @@ namespace wshttp
             check_rv(SSL_CTX_use_PrivateKey(outbound, pk), "Outbound SSL CTX use EVP_PKEY private key");
             check_rv(SSL_CTX_use_certificate(outbound, cert), "Outbound SSL CTX use X509 certificate");
         }
-        else
-        {
+        else {
             // index == 0 -> variant holds user-provided cert/key file paths
             assert(storage.index() == 0);
             const auto& [certfile, keyfile] = std::get<cert_pk_file_pair>(storage).cert_keypair();
@@ -216,8 +200,7 @@ namespace wshttp
     }
 
     app_context::app_context(std::shared_ptr<ssl_creds> c) :
-            _creds{c}, _i{SSL_CTX_new(TLS_server_method())}, _o{SSL_CTX_new(TLS_client_method())}
-    {
+            _creds{c}, _i{SSL_CTX_new(TLS_server_method())}, _o{SSL_CTX_new(TLS_client_method())} {
         if (!_i)
             throw std::runtime_error{"Failed to create inbound SSL context: {}"_format(detail::current_error())};
         if (!_o)
@@ -229,8 +212,7 @@ namespace wshttp
         _init_outbound();
     }
 
-    void app_context::_init_inbound()
-    {
+    void app_context::_init_inbound() {
         auto* ctx = _i.get();
         assert(ctx);
 
@@ -239,8 +221,7 @@ namespace wshttp
         // SSL_CTX_set_alpn_select_cb(ctx, ctx_callbacks::server_select_alpn_proto_cb, this);
     }
 
-    void app_context::_init_outbound()
-    {
+    void app_context::_init_outbound() {
         auto* ctx = _o.get();
         assert(ctx);
 

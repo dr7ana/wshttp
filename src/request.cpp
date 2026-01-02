@@ -3,20 +3,16 @@
 #include "endpoint.hpp"
 #include "internal.hpp"
 
-namespace wshttp
-{
-    struct hdr_fields
-    {
+namespace wshttp {
+    struct hdr_fields {
         static constexpr auto* accept = "Accept";
         static constexpr auto* close = "close";
         static constexpr auto* conn = "Connection";
         static constexpr auto* host = "Host";
     };
 
-    static constexpr auto content_type_string(content_type t)
-    {
-        switch (t)
-        {
+    static constexpr auto content_type_string(content_type t) {
+        switch (t) {
             default:
             case content_type::WILDCARD:
                 return "*/*"sv;
@@ -45,28 +41,23 @@ namespace wshttp
         }
     }
 
-    namespace detail
-    {
-        http_request* _get_request(void* user_arg)
-        {
+    namespace detail {
+        http_request* _get_request(void* user_arg) {
             return static_cast<http_request*>(user_arg);
         }
     }  // namespace detail
 
-    size_t hash_reqptr(evhttp_request* req)
-    {
+    size_t hash_reqptr(evhttp_request* req) {
         return reinterpret_cast<std::uintptr_t>(req);
     }
 
-    void request_callbacks::req_done_cb(struct evhttp_request* req, void* user_arg)
-    {
+    void request_callbacks::req_done_cb(struct evhttp_request* req, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         unlog::critical("ptr hash: {}", hash_reqptr(req));
         return detail::_get_request(user_arg)->request_recv(req);
     }
 
-    void request_callbacks::req_error_cb(evhttp_request_error ec, void* user_arg)
-    {
+    void request_callbacks::req_error_cb(evhttp_request_error ec, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         unlog::info("HTTP request error: {}", detail::evreq_err_str(ec));
@@ -75,8 +66,7 @@ namespace wshttp
 
     http_request::http_request(
             outbound_session& s, request_id_t id, uri_ptr u, METHOD m, std::optional<request_opts> opts) :
-            _request_id{id}, _session{s}, _uri{std::move(u)}, _method{m}
-    {
+            _request_id{id}, _session{s}, _uri{std::move(u)}, _method{m} {
         _req.reset(evhttp_request_new(request_callbacks::req_done_cb, this));
         // _req.reset(_session.new_req());
 
@@ -114,20 +104,17 @@ namespace wshttp
             throw std::runtime_error{"Failed to dispatch evhttp_request!"};
     }
 
-    http_request::~http_request()
-    {
+    http_request::~http_request() {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
     }
 
-    void http_request::populate_opts()
-    {
+    void http_request::populate_opts() {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         _type = _session._default_type;
         _hook = _session.make_req_data_caller();
     }
 
-    void http_request::populate_opts(request_opts opts)
-    {
+    void http_request::populate_opts(request_opts opts) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
         if (opts.media_type)
@@ -140,67 +127,54 @@ namespace wshttp
         else
             _hook = _session.make_req_data_caller();
 
-        if (opts.flags & std::to_underlying(hdr_flags::CLOSE))
-        {
+        if (opts.flags & std::to_underlying(hdr_flags::CLOSE)) {
             unlog::critical("GOOD");
             _close_session_on_complete = true;
         }
     }
 
     http_req_ptr http_request::construct(
-            outbound_session& s, request_id_t id, uri_ptr u, METHOD m, std::optional<request_opts> opts)
-    {
+            outbound_session& s, request_id_t id, uri_ptr u, METHOD m, std::optional<request_opts> opts) {
         http_req_ptr ret = nullptr;
 
-        try
-        {
+        try {
             ret = std::unique_ptr<http_request>(new http_request{s, id, std::move(u), m, std::move(opts)});
-        }
-        catch (const std::exception& e)
-        {
+        } catch (const std::exception& e) {
             unlog::critical("http_request construction exception: {}", e.what());
         }
 
         return ret;
     }
 
-    void http_request::signal_close(bool close_session)
-    {
-        if (close_session)
-        {
+    void http_request::signal_close(bool close_session) {
+        if (close_session) {
             unlog::debug("Signalling outbound termination of remote session");
             _session.close();
         }
-        else
-        {
+        else {
             unlog::debug("Signalling outbound session to close completed request (id:{})", _request_id);
             _session.close_request(_request_id);
         }
     }
 
-    void http_request::set_close_on_complete()
-    {
+    void http_request::set_close_on_complete() {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         _close_session_on_complete = true;
     }
 
-    void http_request::test_method()
-    {
+    void http_request::test_method() {
         unlog::critical("inner ptr hash: {}", hash_reqptr(_req.get()));
     }
 
-    void http_request::request_recv(struct evhttp_request* req)
-    {
+    void http_request::request_recv(struct evhttp_request* req) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
 
-        if (!req || !evhttp_request_get_response_code(req))
-        {
+        if (!req || !evhttp_request_get_response_code(req)) {
             unlog::info("closing http request id:{}", _request_id);
             return signal_close();
         }
 
-        if (!_req || !evhttp_request_get_response_code(_req.get()))
-        {
+        if (!_req || !evhttp_request_get_response_code(_req.get())) {
             unlog::critical("ERROR: inner http req ptr is gone? Shutting down session");
             return signal_close(true);
         }
@@ -231,8 +205,7 @@ namespace wshttp
 
         std::vector<char> buf(nread);
 
-        if (evbuffer_remove(evbuffer, buf.data(), nread) < 0)
-        {
+        if (evbuffer_remove(evbuffer, buf.data(), nread) < 0) {
             unlog::critical("Buffer error: failed to remove request data from evbuffer!");
             return signal_close(true);
         }

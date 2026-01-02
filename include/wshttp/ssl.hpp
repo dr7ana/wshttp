@@ -17,28 +17,22 @@ extern "C" {
 
 #include <variant>
 
-namespace wshttp
-{
+namespace wshttp {
     class endpoint;
 
-    namespace deleters
-    {
-        struct _ssl_ctx
-        {
+    namespace deleters {
+        struct _ssl_ctx {
             inline void operator()(::SSL_CTX* s) const { SSL_CTX_free(s); }
         };
 
-        struct _ssl
-        {
+        struct _ssl {
             inline void operator()(::SSL* s) const { SSL_shutdown(s); }
         };
-        struct _evp
-        {
+        struct _evp {
             inline void operator()(::EVP_PKEY* p) const { return ::EVP_PKEY_free(p); }
         };
 
-        struct _x509
-        {
+        struct _x509 {
             inline void operator()(::X509* x) const { return ::X509_free(x); }
         };
     }  // namespace deleters
@@ -51,8 +45,7 @@ namespace wshttp
     struct ssl_creds;
     class app_context;
 
-    struct x509_cert_keypair
-    {
+    struct x509_cert_keypair {
         friend struct ssl_creds;
 
       protected:
@@ -67,8 +60,7 @@ namespace wshttp
         x509_cert_keypair();
     };
 
-    struct cert_pk_file_pair
-    {
+    struct cert_pk_file_pair {
         friend struct ssl_creds;
 
         cert_pk_file_pair() = delete;
@@ -88,8 +80,7 @@ namespace wshttp
     // first: certfile, second: keyfile
     using ssl_cert_store_v = std::variant<cert_pk_file_pair, x509_cert_keypair>;
 
-    struct ssl_creds
-    {
+    struct ssl_creds {
         friend class app_context;
 
       private:
@@ -107,14 +98,12 @@ namespace wshttp
 
         static std::shared_ptr<ssl_creds> make() { return std::shared_ptr<ssl_creds>{new ssl_creds{}}; }
 
-        static std::shared_ptr<ssl_creds> make(const std::string_view& keyfile, const std::string_view& certfile)
-        {
+        static std::shared_ptr<ssl_creds> make(const std::string_view& keyfile, const std::string_view& certfile) {
             return std::shared_ptr<ssl_creds>{new ssl_creds{keyfile, certfile}};
         }
     };
 
-    class app_context
-    {
+    class app_context {
         friend struct ctx_callbacks;
         friend class endpoint;
         friend class node;
@@ -123,8 +112,7 @@ namespace wshttp
         app_context(std::shared_ptr<ssl_creds> c);
 
       public:
-        static std::shared_ptr<app_context> make(std::shared_ptr<ssl_creds> c)
-        {
+        static std::shared_ptr<app_context> make(std::shared_ptr<ssl_creds> c) {
             return std::shared_ptr<app_context>{new app_context{c}};
         }
 
@@ -145,13 +133,10 @@ namespace wshttp
     };
 }  //  namespace wshttp
 
-namespace std
-{
+namespace std {
     template <>
-    struct hash<wshttp::app_context>
-    {
-        size_t operator()(const wshttp::app_context& c) const noexcept
-        {
+    struct hash<wshttp::app_context> {
+        size_t operator()(const wshttp::app_context& c) const noexcept {
             // TODO:
             (void)c;
             return {};

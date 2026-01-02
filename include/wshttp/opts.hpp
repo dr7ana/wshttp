@@ -5,8 +5,7 @@
 #include <tuple>
 #include <utility>
 
-namespace wshttp
-{
+namespace wshttp {
     enum class METHOD : uint8_t {
         UNSUPPORTED = 0,
         GET = 1,
@@ -51,8 +50,7 @@ namespace wshttp
     using inbound_generic_handler = std::function<void(METHOD, struct evhttp_request*)>;
     using inbound_method_handler = std::function<void(struct evhttp_request*)>;
 
-    namespace detail
-    {
+    namespace detail {
         template <typename T, typename E>
         concept is_scoped_enum_or_underlying_uint =
                 (std::is_scoped_enum_v<T> && std::is_same_v<T, E>) || std::is_unsigned_v<T>;
@@ -78,19 +76,16 @@ namespace wshttp
     template <typename... Arg>
     concept request_opt_types = ((detail::request_only_opt<Arg> || detail::session_only_opt<Arg>), ...);
 
-    struct inbound_opts final
-    {
+    struct inbound_opts final {
         template <typename... Arg>
-        inbound_opts(Arg&&... args)
-        {
+        inbound_opts(Arg&&... args) {
             ((void)handle_iopt(std::forward<Arg>(args)...));
         }
 
         std::unordered_map<METHOD, inbound_method_handler> handlers;
         inbound_generic_handler generic_handler;
 
-        void handle_iopt(std::pair<METHOD, inbound_method_handler> method_handler)
-        {
+        void handle_iopt(std::pair<METHOD, inbound_method_handler> method_handler) {
             handlers.emplace(std::move(method_handler));
         }
 
@@ -100,14 +95,12 @@ namespace wshttp
         friend struct inbound_session;
     };
 
-    struct session_opts
-    {
+    struct session_opts {
         friend class outbound_session;
         friend struct http_request;
 
         template <typename... Arg>
-        session_opts(Arg... args)
-        {
+        session_opts(Arg... args) {
             ((void)handle_sopt(std::forward<Arg>(args)), ...);
         }
 
@@ -131,8 +124,7 @@ namespace wshttp
         virtual void handle_sopt(hdr_flags f) { flags |= std::to_underlying(f); }
     };
 
-    struct request_opts : public session_opts
-    {
+    struct request_opts : public session_opts {
         friend class outbound_session;
 
         using session_opts::session_opts;

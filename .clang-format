@@ -32,15 +32,15 @@ PenaltyBreakString: '3'
 # bracing
 BraceWrapping:
   AfterCaseLabel: true
-  AfterClass: true
-  AfterControlStatement: Always
+  AfterClass: false
+  AfterControlStatement: Never
   AfterEnum: false
   AfterExternBlock: false
-  AfterFunction: true
-  AfterNamespace: true
-  AfterStruct: true
-  AfterUnion: true
-  BeforeCatch: true
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
   BeforeElse: true
   BeforeLambdaBody: false
   BeforeWhile: false
@@ -64,24 +64,28 @@ RemoveSemicolon: true
 SortIncludes: CaseInsensitive
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '".+\.h'
+  - Regex: '^"[^/]*.h(pp)?"$'
+    Priority: 1
+  - Regex: '^"wshttp'
     Priority: 2
   - Regex: '^<wshttp'
     Priority: 3
-  - Regex: '^<(event2|ngtcp2)'
+  - Regex: '^"(event2|ntcp2|unlog)'
     Priority: 4
-  - Regex: '<winsock2\.h>'
+  - Regex: '^<(event2|ntcp2|unlog)'
     Priority: 5
-  - Regex: '<windows\.h>'
+  - Regex: '<winsock2\.h>'
     Priority: 6
-  - Regex: '^<CLI'
+  - Regex: '<windows\.h>'
     Priority: 7
-  - Regex: '^<catch2'
+  - Regex: '^<CLI'
     Priority: 8
-  - Regex: '^<.*\.h(pp)?>$'
+  - Regex: '^<catch2'
     Priority: 9
-  - Regex: '(<)(.)+(>)'
+  - Regex: '^<.*\.h(pp)?>$'
     Priority: 10
+  - Regex: '(<)(.)+(>)'
+    Priority: 11
 
 # spacing
 SpaceBeforeParens: ControlStatements
