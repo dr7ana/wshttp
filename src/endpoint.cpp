@@ -50,11 +50,11 @@ namespace wshttp {
             auto [it, b] = _outbound_sessions.try_emplace(_uri->host_domain(), nullptr);
 
             if (b) {
-                unlog::info("Constructing outbound session to new remote domain: {}", _uri->hview());
+                unlog::error("Constructing outbound session to new remote domain: {}", _uri->hview());
                 it->second = make_shared<outbound_session>(*this, std::move(_uri), std::move(opts));
             }
             else {
-                unlog::info("Outbound session already exists for remote domain: {}!", _uri->hview());
+                unlog::error("Outbound session already exists for remote domain: {}!", _uri->hview());
                 return nullptr;
             }
 
@@ -65,19 +65,14 @@ namespace wshttp {
     bool endpoint::_request(std::string_view u, METHOD method, std::optional<session_opts> opts) {
         // TODO: make a :call(...)
         return _loop->call_get([&]() {
-            auto _uri = uri::make(u);
+            auto new_session = initiate_session(u, opts);
 
-            auto [it, b] = _outbound_sessions.try_emplace(_uri->host_domain(), nullptr);
-
-            if (b) {
-                unlog::info("Constructing outbound session to new remote domain: {}", _uri->hview());
-                it->second = make_shared<outbound_session>(*this, std::move(_uri), std::move(opts));
+            if (!new_session) {
+                unlog::warn("Failed to construct outbound session");
+                return false;
             }
-            else
-                unlog::info("Outbound session already exists for remote domain: {}!", _uri->hview());
 
-            it->second->request(method);
-
+            new_session->request(method);
             return true;
         });
     }

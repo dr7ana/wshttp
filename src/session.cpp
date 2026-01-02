@@ -140,25 +140,26 @@ namespace wshttp {
     }
 
     void outbound_session::initiate_request(METHOD method, uri_ptr req_uri, std::optional<request_opts> opts) {
-        // return _ep.loop()->call_get([&](){});
-        unlog::trace("{} called", __PRETTY_FUNCTION__);
+        _ep.loop()->call([&]() {
+            unlog::trace("{} called", __PRETTY_FUNCTION__);
 
-        auto& req = _request_que.emplace_front(
-                http_request::construct(*this, ++_next_request_id, std::move(req_uri), method, std::move(opts)));
+            auto& req = _request_que.emplace_front(
+                    http_request::construct(*this, ++_next_request_id, std::move(req_uri), method, std::move(opts)));
 
-        if (not req) {
-            unlog::warn("Outbound session (remote: {}) failed to create http request!", _uri->hview());
-            _request_que.erase(_request_que.begin());
-        }
+            if (not req) {
+                unlog::warn("Outbound session (remote: {}) failed to create http request!", _uri->hview());
+                _request_que.erase(_request_que.begin());
+            }
 
-        auto [it, b] = _request_table.emplace(_next_request_id, _request_que.begin());
+            auto [it, b] = _request_table.emplace(_next_request_id, _request_que.begin());
 
-        if (!b) [[unlikely]] {
-            unlog::critical("ERROR: REQUEST ID COLLISION");
-            req->set_close_on_complete();
-        }
-        else
-            unlog::info("Successfully dispatched new evhttp_request for {}", _uri->hview());
+            if (!b) [[unlikely]] {
+                unlog::critical("ERROR: REQUEST ID COLLISION");
+                req->set_close_on_complete();
+            }
+            else
+                unlog::info("Successfully dispatched new evhttp_request for {}", _uri->hview());
+        });
     }
 
     void outbound_session::request(METHOD method, std::optional<request_opts> opts) {
@@ -188,6 +189,7 @@ namespace wshttp {
         _ep.loop()->call_soon([this, id]() mutable {
             if (auto it = _request_table.find(id); it != _request_table.end()) {
                 _request_que.erase(it->second);
+                _request_table.erase(it);
                 unlog::debug("Deleted completed request (id:{})", id);
             }
             else
