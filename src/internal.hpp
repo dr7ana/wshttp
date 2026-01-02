@@ -1,8 +1,8 @@
 #pragma once
 
 // #include "encoding.hpp"
-// #include "format.hpp"
 #include "endpoint.hpp"
+#include "format.hpp"
 #include "parser.hpp"
 
 extern "C" {
