@@ -16,8 +16,8 @@ namespace wshttp {
         }
     }  // namespace detail
 
-    static constexpr auto default_sslopts = (SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) | SSL_OP_NO_SSLv2 |
-                                            SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1_1 | SSL_OP_NO_COMPRESSION |
+    static constexpr auto default_sslopts = (SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) | SSL_OP_NO_SSLv3 |
+                                            SSL_OP_NO_TLSv1_1 | SSL_OP_NO_COMPRESSION |
                                             SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
 
     static constexpr auto MIN_TLS_VERSION = /* TLS1_2_VERSION */ 0x0303;

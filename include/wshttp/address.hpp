@@ -59,8 +59,6 @@ namespace wshttp {
       private:
         url_result_ptr _url;
 
-        evuri_ptr _evuri;
-
         // TODO: make _host into a domain_host object
         // need null-terminated c-strings for SSL and libevent
         std::string _host;
@@ -68,7 +66,7 @@ namespace wshttp {
 
         SCHEME _scheme;
         int _port;
-        bool _use_tls;
+        bool _use_tls{};
 
         void _populate_internals();
 

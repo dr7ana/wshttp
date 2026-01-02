@@ -77,13 +77,6 @@ namespace wshttp {
             throw std::invalid_argument{"uri length must be <= 4096 (given:{})"_format(input.size())};
 
         _populate_internals();
-        // _evuri.reset(evhttp_uri_parse(input));
-
-        // if (not _evuri)
-        //     throw std::invalid_argument{"evhttp failed to parse uri input: {}"_format(input)};
-
-        // if (auto s = evhttp_uri_get_scheme(_evuri.get()); !s)
-        //     throw std::invalid_argument{"evhttp failed to parse uri scheme (given:{})"_format(input)};
 
         unlog::info("parsed url: {}", url().get_href());
     }
@@ -99,16 +92,23 @@ namespace wshttp {
         if (_scheme == SCHEME::UNSUPPORTED)
             throw std::invalid_argument{"uri must use protocol schemes HTTP/S or WS/S (given: {})"_format(s)};
 
-        if (!s.empty()) {
+        unlog::info("scheme: {} (empty:{})", s, s.empty());
 
-            if (s == https_scheme_d)
-                _scheme = SCHEME::HTTPS, _use_tls = true;
-            else if (s == http_scheme_d)
+        if (!s.empty()) {
+            if (s == https_scheme_d) {
+                _scheme = SCHEME::HTTPS;
+                _use_tls = true;
+            }
+            else if (s == http_scheme_d) {
                 _scheme = SCHEME::HTTP;
-            else if (s == wss_scheme_d)
-                _scheme = SCHEME::WSS, _use_tls = true;
-            else if (s == ws_scheme_d)
+            }
+            else if (s == wss_scheme_d) {
+                _scheme = SCHEME::WSS;
+                _use_tls = true;
+            }
+            else if (s == ws_scheme_d) {
                 _scheme = SCHEME::WS;
+            }
             else
                 throw std::invalid_argument{"uri must use protocol schemes HTTP/S or WS/S (given: {})"_format(s)};
         }
@@ -126,6 +126,8 @@ namespace wshttp {
         unlog::trace("uri pathquery: {}", _pathquery);
 
         auto p = url().get_port();
+
+        unlog::info("port: {} (empty:{})", p, p.empty());
 
         if (p.empty()) {
             if (_use_tls) {

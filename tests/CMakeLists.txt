@@ -17,6 +17,9 @@ add_executable(
     alltests
 
     001.cpp
+    002.cpp
+    003.cpp
+    004.cpp
     main.cpp
 )
 
