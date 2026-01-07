@@ -2,11 +2,13 @@
 
 #include "address.hpp"
 #include "dns.hpp"
-#include "loop.hpp"
 #include "session.hpp"
+
+#include <uneventful/loop.hpp>
 
 namespace wshttp {
     using namespace unlog::literals;
+    using un::event::caller_id_t;
 
     struct ssl_creds;
     class listener;
@@ -18,7 +20,7 @@ namespace wshttp {
     class endpoint final : public std::enable_shared_from_this<endpoint> {
         template <typename... Opt>
             requires detail::require_one_of_is<std::shared_ptr<ssl_creds>, Opt...>
-        explicit endpoint(std::shared_ptr<event_loop> ev_loop, Opt&&... opts) :
+        explicit endpoint(std::shared_ptr<un::event::event_loop> ev_loop, Opt&&... opts) :
                 _loop{std::move(ev_loop)},
                 _dns{_loop->template make_shared<dns::server>(*this)},
                 caller_id{++next_caller_id} {
@@ -31,7 +33,7 @@ namespace wshttp {
         template <typename... Opt>
             requires detail::require_one_of_is<std::shared_ptr<ssl_creds>, Opt...>
         explicit endpoint(Opt&&... opts) :
-                _loop{event_loop::make()},
+                _loop{un::event::event_loop::make()},
                 _dns{_loop->template make_shared<dns::server>(*this)},
                 caller_id{++next_caller_id} {
             if constexpr (sizeof...(opts))
@@ -50,18 +52,19 @@ namespace wshttp {
         }
 
         template <typename... Opt>
-        [[nodiscard]] static std::shared_ptr<endpoint> make(std::shared_ptr<event_loop> ev_loop, Opt&&... args) {
+        [[nodiscard]] static std::shared_ptr<endpoint> make(
+                std::shared_ptr<un::event::event_loop> ev_loop, Opt&&... args) {
             return std::shared_ptr<endpoint>(new endpoint{std::move(ev_loop), std::forward<Opt>(args)...});
         }
 
         ~endpoint();
 
       private:
-        std::shared_ptr<event_loop> _loop;
+        std::shared_ptr<un::event::event_loop> _loop;
         std::shared_ptr<dns::server> _dns;
         std::shared_ptr<app_context> _ctx;
 
-        std::shared_ptr<ev_watcher> _stats;
+        std::shared_ptr<un::event::ev_watcher> _stats;
 
         const caller_id_t caller_id;
         static caller_id_t next_caller_id;
@@ -113,7 +116,7 @@ namespace wshttp {
             return _request(uri, method, std::move(opts));
         }
 
-        const std::shared_ptr<event_loop>& loop() { return _loop; }
+        const std::shared_ptr<un::event::event_loop>& loop() { return _loop; }
 
         void set_shutdown_immediate(bool b = true) { _close_immediately = b; }
 
@@ -163,7 +166,7 @@ namespace wshttp {
         friend struct ws_session_base;
         friend class listener;
         friend class stream;
-        friend class event_loop;
+        friend class un::event::event_loop;
         friend class dns::server;
     };
 }  //  namespace wshttp

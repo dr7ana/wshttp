@@ -1,9 +1,10 @@
 #pragma once
 
 #include "address.hpp"
-#include "loop.hpp"
 #include "opts.hpp"
 #include "ssl.hpp"
+
+#include <uneventful/loop.hpp>
 
 extern "C" {
 #include <event2/listener.h>
@@ -39,7 +40,7 @@ namespace wshttp {
         friend struct inbound_session;
         friend struct ws_session_base;
         friend class endpoint;
-        friend class event_loop;
+        friend class un::event::event_loop;
         friend struct listen_callbacks;
 
         explicit listener(endpoint& e, ip_address bind, std::optional<inbound_opts> opts = std::nullopt);

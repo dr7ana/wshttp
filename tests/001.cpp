@@ -180,7 +180,7 @@ namespace wshttp::test {
         }
 
         SECTION("Application owns event loop") {
-            auto loop = event_loop::make();
+            auto loop = un::event::event_loop::make();
             REQUIRE(loop);
 
             auto ep = endpoint::make(loop, creds);

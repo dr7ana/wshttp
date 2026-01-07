@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
 
     std::shared_ptr<ssl_creds> creds;
 
-    auto loop = event_loop::make();
+    auto loop = un::event::event_loop::make();
     creds = (!key_path.empty() && !cert_path.empty()) ? ssl_creds::make(key_path, cert_path) : ssl_creds::make();
 
     std::shared_ptr<endpoint> ep;

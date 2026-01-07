@@ -26,7 +26,7 @@ git_override(
 bazel_dep(name = "uneventful", version = "0.0.1")
 git_override(
     module_name = "uneventful",
-    commit = "b7700c9217e242353afc3de1879472650015ed74",
+    commit = "99c28a074f0f642e09e37f5fde61943c9a836fbb",
     init_submodules = True,
     remote = "https://github.com/dr7ana/uneventful",
 )

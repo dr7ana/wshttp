@@ -6,7 +6,6 @@
 #include "wshttp/endpoint.hpp"
 // #include "wshttp/format.hpp"
 #include "wshttp/listener.hpp"
-#include "wshttp/loop.hpp"
 #include "wshttp/opts.hpp"
 #include "wshttp/parser.hpp"
 #include "wshttp/request.hpp"

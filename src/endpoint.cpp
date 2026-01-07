@@ -94,17 +94,17 @@ namespace wshttp {
     endpoint::~endpoint() {
         unlog::debug("Shutting down client...");
 
-        if (not _close_immediately)
+        if (not _close_immediately) {
             shutdown_endpoint();
+        }
 
         _listeners.clear();
         _outbound_sessions.clear();
 
         // clear all mappings here
-        if (_loop.use_count() == 1)
+        if (_loop.use_count() == 1) {
             _loop->stop_thread(_close_immediately);
-
-        _loop->stop_tickers(caller_id);
+        }
 
         unlog::info("Client shutdown complete!");
     }
@@ -155,7 +155,7 @@ namespace wshttp {
     }
 
     struct evhttp* endpoint::make_evhttp() {
-        evhttp* e = evhttp_new(_loop->ev_loop.get());
+        evhttp* e = evhttp_new(_loop->loop().get());
 
         if (!e)
             throw std::runtime_error{"Failed to create evhttp event base!"};

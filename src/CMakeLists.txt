@@ -9,7 +9,6 @@ add_library(
     endpoint.cpp
     format.cpp
     listener.cpp
-    loop.cpp
     parser.cpp
     request.cpp
     session.cpp

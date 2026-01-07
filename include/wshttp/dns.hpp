@@ -1,7 +1,8 @@
 #pragma once
 
 #include "address.hpp"
-#include "loop.hpp"
+
+#include <uneventful/loop.hpp>
 
 extern "C" {
 #include <event2/dns.h>

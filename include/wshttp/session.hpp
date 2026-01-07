@@ -142,7 +142,7 @@ namespace wshttp {
         friend class endpoint;
         friend struct http_request;
         friend struct outbound_callbacks;
-        friend class event_loop;
+        friend class un::event::event_loop;
     };
 
     struct outbound_ptr_comp {
