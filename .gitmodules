@@ -4,12 +4,9 @@
 [submodule "tests/Catch2"]
 	path = tests/Catch2
 	url = https://github.com/catchorg/Catch2.git
-[submodule "external/libevent"]
-	path = external/libevent
-	url = https://github.com/libevent/libevent.git
 [submodule "external/ada"]
 	path = external/ada
 	url = https://github.com/ada-url/ada.git
-[submodule "external/unlog"]
-	path = external/unlog
-	url = https://github.com/dr7ana/unlog.git
+[submodule "external/uneventful"]
+	path = external/uneventful
+	url = https://github.com/dr7ana/uneventful.git

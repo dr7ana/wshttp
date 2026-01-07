@@ -23,12 +23,8 @@ target_link_libraries(
     wshttp
     
     PUBLIC
-    libevent::core
-    libevent::extra
-    libevent::ssl
-    libevent::threads
     ada::ada
-    un::log
+    un::event
     wshttp_external
 
     PRIVATE

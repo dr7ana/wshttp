@@ -19,8 +19,16 @@ git_override(
     build_file = "external/libevent.BUILD",
     commit = "c4ea8028e08a63db5541344aacd1f18011026101",
     patch_args = ["-p1"],
-    patches = ["external/patches/libevent_module.patch"],
+    patches = ["external/patches/libevent-module.patch"],
     remote = "https://github.com/libevent/libevent",
+)
+
+bazel_dep(name = "uneventful", version = "0.0.1")
+git_override(
+    module_name = "uneventful",
+    commit = "b7700c9217e242353afc3de1879472650015ed74",
+    init_submodules = True,
+    remote = "https://github.com/dr7ana/uneventful",
 )
 
 bazel_dep(name = "ada-url", version = "3.3.0")
