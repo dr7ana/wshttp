@@ -127,6 +127,9 @@ namespace wshttp {
 
         METHOD _method;
         content_type _type;
+        content_type _accept;
+        std::optional<std::string> _user_agent;
+        std::optional<std::vector<char>> _body;
 
         std::atomic<bool> _close_session_on_complete{false};
 

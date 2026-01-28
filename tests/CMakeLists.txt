@@ -20,6 +20,7 @@ add_executable(
     002.cpp
     003.cpp
     004.cpp
+    005.cpp
     main.cpp
 )
 

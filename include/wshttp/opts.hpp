@@ -2,8 +2,12 @@
 
 #include "types.hpp"
 
+#include <chrono>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 namespace wshttp {
     enum class METHOD : uint8_t {
@@ -24,6 +28,8 @@ namespace wshttp {
 
     enum class hdr_flags : uint8_t { CLOSE = 1 << 0 };
 
+    // Media types for request body Content-Type.
+    // Defaults to WILDCARD unless overridden.
     enum class content_type : uint8_t {
         WILDCARD,  //  */*
         APP_WC,    //  application/*
@@ -38,6 +44,29 @@ namespace wshttp {
         HTML,      //  text/html
         PLAIN      //  text/plain
     };
+
+    // Accept header override (independent from Content-Type).
+    struct accept_type {
+        content_type value;
+    };
+
+    // User-Agent header override; if unset, no User-Agent is sent.
+    struct user_agent {
+        std::string value;
+    };
+
+    // Connection-level timeout (applies to outbound session only).
+    struct connection_timeout {
+        std::chrono::seconds value;
+    };
+
+    // Connection-level retry count for outbound sessions (-1 = infinite).
+    struct retry_count {
+        int value;
+    };
+
+    // IP family hint for outbound DNS/connection resolution.
+    enum class ip_family : uint8_t { ANY = 0, IPV4 = 4, IPV6 = 6 };
 
     using request_data_cb = std::function<void(std::vector<char>)>;
 
@@ -62,7 +91,12 @@ namespace wshttp {
         template <typename Arg>
         concept session_only_opt =
                 (request_func<std::remove_cvref_t<Arg>> ||
-                 is_scoped_enum_or_underlying_uint<std::remove_cvref_t<Arg>, content_type>);
+                 is_scoped_enum_or_underlying_uint<std::remove_cvref_t<Arg>, content_type> ||
+                 std::same_as<std::remove_cvref_t<Arg>, accept_type> ||
+                 std::same_as<std::remove_cvref_t<Arg>, user_agent> ||
+                 std::same_as<std::remove_cvref_t<Arg>, connection_timeout> ||
+                 std::same_as<std::remove_cvref_t<Arg>, retry_count> ||
+                 std::same_as<std::remove_cvref_t<Arg>, ip_family>);
 
         // is an option exclusive to requests
         template <typename Arg>
@@ -79,7 +113,7 @@ namespace wshttp {
     struct inbound_opts final {
         template <typename... Arg>
         inbound_opts(Arg&&... args) {
-            ((void)handle_iopt(std::forward<Arg>(args)...));
+            ((void)handle_iopt(std::forward<Arg>(args)), ...);
         }
 
         std::unordered_map<METHOD, inbound_method_handler> handlers;
@@ -89,7 +123,7 @@ namespace wshttp {
             handlers.emplace(std::move(method_handler));
         }
 
-        void handle_iopo(inbound_generic_handler generic) { generic_handler = std::move(generic); }
+        void handle_iopt(inbound_generic_handler generic) { generic_handler = std::move(generic); }
 
         friend class listener;
         friend struct inbound_session;
@@ -106,16 +140,20 @@ namespace wshttp {
 
         virtual ~session_opts() = default;
 
-        // template <typename... Arg>
-        // static std::unique_ptr<session_opts> make(Arg... args)
-        // {
-        //     return std::make_unique<session_opts>(std::forward<Arg>(args)...);
-        // }
-
         std::optional<content_type> media_type{};
+        std::optional<content_type> accept{};
+        std::optional<std::string> ua{};
+        std::optional<std::chrono::seconds> timeout{};
+        std::optional<int> retries{};
+        std::optional<ip_family> family{};
         std::optional<request_data_cb> data_cb;
 
         virtual void handle_sopt(content_type t) { media_type = t; }
+        virtual void handle_sopt(accept_type t) { accept = t.value; }
+        virtual void handle_sopt(user_agent a) { ua = std::move(a.value); }
+        virtual void handle_sopt(connection_timeout t) { timeout = t.value; }
+        virtual void handle_sopt(retry_count r) { retries = r.value; }
+        virtual void handle_sopt(ip_family f) { family = f; }
         virtual void handle_sopt(request_data_cb cb) { data_cb = std::move(cb); }
 
       protected:
@@ -127,37 +165,24 @@ namespace wshttp {
     struct request_opts : public session_opts {
         friend class outbound_session;
 
-        using session_opts::session_opts;
+        template <typename... Arg>
+        request_opts(Arg&&... args) : session_opts() {
+            ((void)handle_ropt(std::forward<Arg>(args)), ...);
+        }
 
-        // template <typename... Arg>
-        // static std::unique_ptr<request_opts> make(Arg... args)
-        // {
-        //     return std::make_unique<request_opts>(std::forward<Arg>(args)...);
-        // }
+        std::optional<std::vector<char>> body{};
+
+        void handle_ropt(content_type t) { session_opts::handle_sopt(t); }
+        void handle_ropt(accept_type t) { session_opts::handle_sopt(t); }
+        void handle_ropt(user_agent a) { session_opts::handle_sopt(std::move(a)); }
+        void handle_ropt(connection_timeout t) { session_opts::handle_sopt(t); }
+        void handle_ropt(retry_count r) { session_opts::handle_sopt(r); }
+        void handle_ropt(ip_family f) { session_opts::handle_sopt(f); }
+        void handle_ropt(request_data_cb cb) { session_opts::handle_sopt(std::move(cb)); }
+        void handle_ropt(uint8_t f) { session_opts::handle_sopt(f); }
+        void handle_ropt(hdr_flags f) { session_opts::handle_sopt(f); }
+        void handle_ropt(std::string_view payload) { body = std::vector<char>(payload.begin(), payload.end()); }
+        void handle_ropt(std::vector<char> payload) { body = std::move(payload); }
     };
-
-    // struct request_opts
-    // {
-    //     template <typename... Arg>
-    //     request_opts(Arg... args)
-    //     {
-    //         ((void)handle_sopt(std::forward<Arg>(args)), ...);
-    //     }
-
-    //     template <typename... Arg>
-    //     static std::unique_ptr<request_opts> make(Arg... args)
-    //     {
-    //         return std::make_unique<request_opts>(std::forward<Arg>(args)...);
-    //     }
-
-    //     std::optional<content_type> media_type{};
-    //     std::optional<request_data_cb> data_cb;
-    //     uint8_t flags{};
-
-    //     void handle_sopt(content_type t) { media_type = t; }
-    //     void handle_sopt(request_data_cb cb) { data_cb = std::move(cb); }
-    //     void handle_sopt(uint8_t f) { flags = f; }
-    //     void handle_sopt(hdr_flags f) { flags = std::to_underlying(f); }
-    // };
 
 }  // namespace wshttp

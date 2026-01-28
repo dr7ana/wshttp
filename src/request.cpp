@@ -3,12 +3,17 @@
 #include "endpoint.hpp"
 #include "internal.hpp"
 
+#include <string>
+
 namespace wshttp {
     struct hdr_fields {
         static constexpr auto* accept = "Accept";
         static constexpr auto* close = "close";
         static constexpr auto* conn = "Connection";
+        static constexpr auto* content_length = "Content-Length";
+        static constexpr auto* content_type = "Content-Type";
         static constexpr auto* host = "Host";
+        static constexpr auto* user_agent = "User-Agent";
     };
 
     static constexpr auto content_type_string(content_type t) {
@@ -38,6 +43,17 @@ namespace wshttp {
                 return "text/html"sv;
             case content_type::PLAIN:
                 return "text/plain"sv;
+        }
+    }
+
+    static constexpr bool is_body_content_type(content_type t) {
+        switch (t) {
+            case content_type::WILDCARD:
+            case content_type::APP_WC:
+            case content_type::TEXT_WC:
+                return false;
+            default:
+                return true;
         }
     }
 
@@ -89,12 +105,36 @@ namespace wshttp {
 
         check_rv(evhttp_add_header(evbuffer, hdr_fields::host, _uri->host().c_str()), "add host hdr", 0);
         check_rv(
-                evhttp_add_header(evbuffer, hdr_fields::accept, content_type_string(content_type::JSON).data()),
-                "add json hdr",
+                evhttp_add_header(evbuffer, hdr_fields::accept, content_type_string(_accept).data()),
+                "add accept hdr",
                 0);
 
         if (_close_session_on_complete)
             check_rv(evhttp_add_header(evbuffer, hdr_fields::conn, hdr_fields::close), "add conn close hdr", 0);
+
+        if (_user_agent && !_user_agent->empty()) {
+            check_rv(
+                    evhttp_add_header(evbuffer, hdr_fields::user_agent, _user_agent->c_str()), "add user-agent hdr", 0);
+        }
+
+        if (_body) {
+            auto* outbuf = evhttp_request_get_output_buffer(_req.get());
+            if (!outbuf)
+                throw std::runtime_error{"Failed to acquire output buffer for request body!"};
+
+            if (!_body->empty())
+                check_rv(evbuffer_add(outbuf, _body->data(), _body->size()), "add body", 0);
+
+            auto len_str = std::to_string(_body->size());
+            check_rv(evhttp_add_header(evbuffer, hdr_fields::content_length, len_str.c_str()), "add len hdr", 0);
+
+            if (is_body_content_type(_type)) {
+                check_rv(
+                        evhttp_add_header(evbuffer, hdr_fields::content_type, content_type_string(_type).data()),
+                        "add content type hdr",
+                        0);
+            }
+        }
 
         if (evhttp_make_request(
                     _session._evconn.get(),
@@ -111,7 +151,10 @@ namespace wshttp {
     void http_request::populate_opts() {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
         _type = _session._default_type;
+        _accept = _session._default_accept;
+        _user_agent = _session._default_user_agent;
         _hook = _session.make_req_data_caller();
+        _body.reset();
     }
 
     void http_request::populate_opts(request_opts opts) {
@@ -122,6 +165,16 @@ namespace wshttp {
         else
             _type = _session._default_type;
 
+        if (opts.accept)
+            _accept = *opts.accept;
+        else
+            _accept = _session._default_accept;
+
+        if (opts.ua)
+            _user_agent.swap(opts.ua);
+        else
+            _user_agent = _session._default_user_agent;
+
         if (opts.data_cb)
             _hook = _session.make_req_data_caller(std::move(*opts.data_cb));
         else
@@ -131,6 +184,8 @@ namespace wshttp {
             unlog::critical("GOOD");
             _close_session_on_complete = true;
         }
+
+        _body = std::move(opts.body);
     }
 
     http_req_ptr http_request::construct(

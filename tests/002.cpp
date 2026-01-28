@@ -51,6 +51,20 @@ namespace wshttp::test {
             CHECK(parsed->pathquery() == "/lookup?empty=&flag&name=test"sv);
         }
 
+        SECTION("Relative path uses base without mutation") {
+            auto base = uri::make("https://example.com/alpha?x=1");
+            REQUIRE(base);
+
+            auto derived = uri::make("/beta?y=2", base->base());
+            REQUIRE(derived);
+
+            CHECK(derived->scheme() == "https"sv);
+            CHECK(derived->host() == "example.com"sv);
+            CHECK(derived->port() == 443);
+            CHECK(derived->pathquery() == "/beta?y=2"sv);
+            CHECK(base->pathquery() == "/alpha?x=1"sv);
+        }
+
         SECTION("Unsupported scheme fails") {
             auto parsed = uri::make("ftp://example.com");
             CHECK_FALSE(parsed);

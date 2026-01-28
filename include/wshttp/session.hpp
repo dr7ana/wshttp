@@ -94,6 +94,11 @@ namespace wshttp {
         // uri _uri;
 
         content_type _default_type{content_type::WILDCARD};
+        content_type _default_accept{content_type::WILDCARD};
+        std::optional<std::string> _default_user_agent{};
+        std::optional<std::chrono::seconds> _timeout{};
+        std::optional<int> _retries{};
+        std::optional<ip_family> _family{};
 
         request_data_cb _hook;
 

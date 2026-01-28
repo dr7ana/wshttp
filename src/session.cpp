@@ -3,6 +3,8 @@
 #include "endpoint.hpp"
 #include "internal.hpp"
 
+#include <sys/socket.h>
+
 #include <iostream>
 
 namespace wshttp {
@@ -109,7 +111,7 @@ namespace wshttp {
             _ep{ep}, _uri{std::move(u)} {
         unlog::debug("Outbound session (remote: {}) created", _uri->hview());
 
-        auto* bev = new_bev();
+        auto* bev = new_bev(_uri->use_tls());
 
         if (not bev)
             throw std::runtime_error{
@@ -133,6 +135,49 @@ namespace wshttp {
             _hook = std::move(*opts.data_cb);
         if (opts.media_type)
             _default_type = *opts.media_type;
+        if (opts.accept)
+            _default_accept = *opts.accept;
+        else
+            _default_accept = _default_type;
+        if (opts.ua)
+            _default_user_agent.swap(opts.ua);
+        if (opts.timeout) {
+            if (opts.timeout->count() < 0) {
+                unlog::warn("Ignoring invalid connection timeout: {}s", opts.timeout->count());
+            }
+            else {
+                _timeout = *opts.timeout;
+                evhttp_connection_set_timeout(_evconn.get(), static_cast<int>(_timeout->count()));
+            }
+        }
+        if (opts.retries) {
+            if (*opts.retries < -1) {
+                unlog::warn("Ignoring invalid retry count: {}", *opts.retries);
+            }
+            else {
+                _retries = *opts.retries;
+                evhttp_connection_set_retries(_evconn.get(), *_retries);
+            }
+        }
+        if (opts.family) {
+            switch (*opts.family) {
+                case ip_family::IPV4:
+                    _family = *opts.family;
+                    evhttp_connection_set_family(_evconn.get(), AF_INET);
+                    break;
+                case ip_family::IPV6:
+                    _family = *opts.family;
+                    evhttp_connection_set_family(_evconn.get(), AF_INET6);
+                    break;
+                case ip_family::ANY:
+                    _family = *opts.family;
+                    evhttp_connection_set_family(_evconn.get(), AF_UNSPEC);
+                    break;
+                default:
+                    unlog::warn("Ignoring invalid IP family hint: {}", std::to_underlying(*opts.family));
+                    break;
+            }
+        }
     }
 
     outbound_session::~outbound_session() {
@@ -169,9 +214,12 @@ namespace wshttp {
 
     void outbound_session::request(METHOD method, std::string_view path, std::optional<request_opts> opts) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
-        auto _new_uri = _uri;
-        _new_uri->set_path(path);
-        initiate_request(method, std::move(_new_uri), std::move(opts));
+        auto new_uri = uri::make(path, _uri->base());
+        if (!new_uri) {
+            unlog::warn("Failed to parse request path {} for remote {}", path, _uri->hview());
+            return;
+        }
+        initiate_request(method, std::move(new_uri), std::move(opts));
     }
 
     // void outbound_session::recv_request(struct evhttp_request* req)
