@@ -31,5 +31,5 @@ git_override(
     remote = "https://github.com/dr7ana/uneventful",
 )
 
-bazel_dep(name = "ada-url", version = "3.3.0")
+bazel_dep(name = "ada-url", version = "3.4.1")
 bazel_dep(name = "cli11", version = "2.5.0")
