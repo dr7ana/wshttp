@@ -20,7 +20,7 @@ namespace wshttp {
 
     class app_context;
     class endpoint;
-    struct inbound_session;
+    struct http_request;
     struct ws_session_base;
 
     namespace deleters {
@@ -36,8 +36,9 @@ namespace wshttp {
     using tcp_listener = std::unique_ptr<evconnlistener, deleters::_evconnlistener>;
     using evhttp_ptr = std::unique_ptr<::evhttp, deleters::_evhttp>;
 
+    using request_handler_hook = std::function<void(std::shared_ptr<http_request>)>;
+
     class listener final : public socket_interface {
-        friend struct inbound_session;
         friend struct ws_session_base;
         friend class endpoint;
         friend class un::event::event_loop;
@@ -63,13 +64,17 @@ namespace wshttp {
 
         std::optional<inbound_opts> _iopts;
 
-        // key: remote address, value: session ptr
-        std::unordered_map<ip_address, std::shared_ptr<inbound_session>> _requests;
+        std::atomic<request_id_t> _next_request_id{};
+        std::unordered_map<request_id_t, std::shared_ptr<http_request>> _requests;
 
         // TODO: unify requests and ws sessions with base class to use the same map
         std::unordered_map<ip_address, std::shared_ptr<ws_session_base>> _sessions;
 
+        std::array<request_handler_hook, 10> request_handlers{};
+
         void _init_internals();
+
+        void _register_handlers();
 
       protected:
         int recv_request(struct evhttp_request* req);
@@ -77,6 +82,8 @@ namespace wshttp {
         void handle_request(struct evhttp_request* req);
 
         int request_error(struct evhttp_request* req, int error, const char* reason);
+
+        void request_complete(request_id_t id);
 
         void ws_request(struct evhttp_request* req);
 
@@ -87,8 +94,6 @@ namespace wshttp {
         void close_all();
 
         void close() override;
-
-        void close_request(ip_address remote);
 
         void close_ws(ip_address remote);
     };

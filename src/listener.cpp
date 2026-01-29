@@ -2,6 +2,7 @@
 
 #include "endpoint.hpp"
 #include "internal.hpp"
+#include "request.hpp"
 #include "ws.hpp"
 
 namespace wshttp {
@@ -9,6 +10,11 @@ namespace wshttp {
         static listener* _get_listener(void* user_arg) {
             return static_cast<listener*>(user_arg);
         }
+
+        struct request_complete_ctx {
+            listener* l;
+            request_id_t id;
+        };
     }  // namespace detail
 
     void listen_callbacks::gen_cb(struct evhttp_request* req, void* user_arg) {
@@ -31,9 +37,15 @@ namespace wshttp {
         return detail::_get_listener(user_arg)->ws_request(req);
     }
 
-    void listen_callbacks::close_cb(struct evhttp_connection* conn, void* user_arg) {
+    void listen_callbacks::req_complete_cb(struct evhttp_request* /* req */, void* user_arg) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
-        return detail::_get_listener(user_arg)->close_request(detail::get_connection_address(conn));
+        auto* ctx = static_cast<detail::request_complete_ctx*>(user_arg);
+        if (!ctx) {
+            unlog::warn("Request completion callback missing context");
+            return;
+        }
+        ctx->l->request_complete(ctx->id);
+        delete ctx;
     }
 
     int listen_callbacks::error_cb(
@@ -74,9 +86,10 @@ namespace wshttp {
                 reinterpret_cast<sockaddr*>(&saddr),
                 sizeof(sockaddr)));
 
-        if (not _tcp)
+        if (not _tcp) {
             throw std::runtime_error{"TCP listener construction is fucked: {}"_format(
                     evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()))};
+        }
 
         _evh.reset(_ep.make_evhttp());
         evhttp_set_gencb(_evh.get(), listen_callbacks::gen_cb, this);
@@ -88,62 +101,98 @@ namespace wshttp {
 
         evhttp_bound_socket* handle = evhttp_bind_listener(_evh.get(), _tcp.get());
 
-        if (!handle)
+        if (!handle) {
             throw std::runtime_error{"Failed to bind evhttp listener to {}"_format(_local)};
+        }
 
         _fd = evhttp_bound_socket_get_fd(handle);
         unlog::debug("evhttp listener has fd: {}", _fd);
 
+        int val = 1;
+        if (setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0) {
+            throw std::runtime_error{
+                    "Failed to set TCP_NODELAY on inbound listener socket: {}"_format(detail::current_error())};
+        }
+
         _local = ip_address::from_socket(_fd);
 
         unlog::info("evhttp listener deployed on local bind: {}", _local);
+
+        _register_handlers();
+    }
+
+    void listener::_register_handlers() {
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
+        const auto default_handler = [this](std::shared_ptr<http_request> req) mutable {
+            _ep.loop()->call([req]() mutable {
+                unlog::warn("No specific or generic handlers provided for {}", req->to_string());
+                evhttp_send_error(*req, HTTP_BADMETHOD, nullptr);
+            });
+        };
+
+        if (!_iopts) {
+            request_handlers.fill(default_handler);
+            return;
+        }
+
+        for (uint8_t i = 0; i < request_handlers.size(); ++i) {
+            auto m = METHOD{i};
+
+            if (auto it = _iopts->handlers.find(m); it != _iopts->handlers.end()) {
+                request_handlers[i] = [this, mcb = it->second](std::shared_ptr<http_request> req) mutable {
+                    _ep.loop()->call([req, cb = mcb]() mutable { return cb(req); });
+                };
+            }
+            else if (_iopts->generic_handler) {
+                request_handlers[i] = [this,
+                                       mcb = *_iopts->generic_handler](std::shared_ptr<http_request> req) mutable {
+                    _ep.loop()->call([req, cb = mcb]() mutable { return cb(req); });
+                };
+            }
+            else {
+                request_handlers[i] = default_handler;
+            }
+        }
     }
 
     int listener::recv_request(struct evhttp_request* req) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
-
-        auto remote = detail::get_request_address(req);
-
-        auto [it, b] = _requests.try_emplace(remote, nullptr);
-
-        if (not b) {
-            unlog::info("Closing inbound request from remote: {}", remote);
+        if (!req)
             return -1;
-        }
-
-        try {
-            it->second = _ep.template make_shared<inbound_session>(
-                    /* *this,  */ std::move(remote), detail::get_request_fd(req));
-        } catch (const std::exception& e) {
-            unlog::warn("Exception: {}", e.what());
-            return -1;
-        }
-
-        if (not it->second) {
-            unlog::critical("Failed to make inbound request for remote: {}", it->first);
-            return -1;
-        }
-
-        evhttp_connection_set_closecb(evhttp_request_get_connection(req), listen_callbacks::close_cb, this);
-
-        unlog::debug("Successfully created inbound request for remote: {}", it->first);
 
         return 0;
     }
 
     void listener::handle_request(struct evhttp_request* req) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
+        if (!req)
+            return;
 
-        auto remote = detail::get_request_address(req);
+        auto id = ++_next_request_id;
+        auto [it, b] = _requests.try_emplace(id, nullptr);
+        if (!b) {
+            unlog::warn("Inbound request for id:{} already tracked; refusing duplicate", id);
+            evhttp_send_error(req, HTTP_INTERNAL, nullptr);
+            return;
+        }
 
-        if (auto it = _requests.find(remote); it != _requests.end())
-            return it->second->recv_request(req);
+        it->second = http_request::construct_inbound(req, id);
+        if (!it->second) {
+            unlog::warn("Failed to construct inbound request (id:{})", id);
+            _requests.erase(it);
+            evhttp_send_error(req, HTTP_INTERNAL, nullptr);
+            return;
+        }
 
-        unlog::warn(
-                "Received HTTP request (type:{}) from unknown remote: {}",
-                detail::get_method_string(detail::get_request_method(req)),
-                remote);
-        evhttp_send_error(req, HTTP_FORBIDDEN, nullptr);
+        auto& hreq = it->second;
+
+        evhttp_request_set_on_complete_cb(
+                req, listen_callbacks::req_complete_cb, new detail::request_complete_ctx{this, id});
+
+        const auto method = hreq->method();
+
+        // invoke handler
+        request_handlers[std::to_underlying(method)](hreq);
     }
 
     int listener::request_error(struct evhttp_request* req, int error, const char* reason) {
@@ -153,6 +202,18 @@ namespace wshttp {
         unlog::warn("Received error (code:{}) for inbound (remote:{}): {}", error, remote, reason);
 
         return -1;
+    }
+
+    void listener::request_complete(request_id_t id) {
+        unlog::trace("{} called", __PRETTY_FUNCTION__);
+
+        if (_requests.erase(id)) {
+            _ep._completed_inbounds += 1;
+            unlog::debug("Inbound request completed and released");
+        }
+        else {
+            unlog::warn("Inbound request completion callback could not find request to release");
+        }
     }
 
     void listener::ws_request(struct evhttp_request* req) {
@@ -213,17 +274,6 @@ namespace wshttp {
             else
                 unlog::warn("Endpoint closed before outbound session could be closed");
         });
-    }
-
-    void listener::close_request(ip_address remote) {
-        unlog::trace("{} called", __PRETTY_FUNCTION__);
-
-        if (_requests.erase(remote)) {
-            unlog::info("Listener closed session to remote: {}", remote);
-            _ep._completed_inbounds += 1;
-        }
-        else
-            unlog::warn("Listener failed to find session (remote: {}) to close!", remote);
     }
 
     void listener::close_ws(ip_address remote) {

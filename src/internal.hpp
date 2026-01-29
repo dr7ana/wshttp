@@ -188,7 +188,7 @@ namespace wshttp {
 
         static void ws_cb(struct evhttp_request* req, void* user_arg);
 
-        static void close_cb(struct evhttp_connection* conn, void* user_arg);
+        static void req_complete_cb(struct evhttp_request* req, void* user_arg);
 
         static int error_cb(
                 struct evhttp_request* req, struct evbuffer* buffer, int error, const char* reason, void* user_arg);

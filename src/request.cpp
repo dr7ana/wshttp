@@ -82,7 +82,7 @@ namespace wshttp {
 
     http_request::http_request(
             outbound_session& s, request_id_t id, uri_ptr u, METHOD m, std::optional<request_opts> opts) :
-            _request_id{id}, _session{s}, _uri{std::move(u)}, _method{m} {
+            _request_id{id}, _session{&s}, _uri{std::move(u)}, _method{m} {
         _req.reset(evhttp_request_new(request_callbacks::req_done_cb, this));
         // _req.reset(_session.new_req());
 
@@ -117,15 +117,15 @@ namespace wshttp {
                     evhttp_add_header(evbuffer, hdr_fields::user_agent, _user_agent->c_str()), "add user-agent hdr", 0);
         }
 
-        if (_body) {
+        if (_request_body) {
             auto* outbuf = evhttp_request_get_output_buffer(_req.get());
             if (!outbuf)
                 throw std::runtime_error{"Failed to acquire output buffer for request body!"};
 
-            if (!_body->empty())
-                check_rv(evbuffer_add(outbuf, _body->data(), _body->size()), "add body", 0);
+            if (!_request_body->empty())
+                check_rv(evbuffer_add(outbuf, _request_body->data(), _request_body->size()), "add body", 0);
 
-            auto len_str = std::to_string(_body->size());
+            auto len_str = std::to_string(_request_body->size());
             check_rv(evhttp_add_header(evbuffer, hdr_fields::content_length, len_str.c_str()), "add len hdr", 0);
 
             if (is_body_content_type(_type)) {
@@ -137,11 +137,34 @@ namespace wshttp {
         }
 
         if (evhttp_make_request(
-                    _session._evconn.get(),
+                    _session->_evconn.get(),
                     _req.get(),
                     detail::get_method_cmd_type(_method),
                     _uri->pathquery().c_str()) != 0)
             throw std::runtime_error{"Failed to dispatch evhttp_request!"};
+    }
+
+    http_request::http_request(request_id_t id, struct evhttp_request* req) : _request_id{id} {
+        if (!req)
+            throw std::invalid_argument{"Inbound request cannot wrap null evhttp_request"};
+
+        _req.reset(req);
+        _method = detail::get_request_method(req);
+        _type = content_type::WILDCARD;
+        _accept = content_type::WILDCARD;
+
+        evhttp_request_own(req);
+        assert(evhttp_request_is_owned(req));
+
+        auto* inbuf = evhttp_request_get_input_buffer(req);
+        if (inbuf) {
+            const auto nread = evbuffer_get_length(inbuf);
+            if (nread > 0) {
+                std::vector<char> buf(nread);
+                evbuffer_copyout(inbuf, buf.data(), nread);
+                _request_body = std::move(buf);
+            }
+        }
     }
 
     http_request::~http_request() {
@@ -150,42 +173,47 @@ namespace wshttp {
 
     void http_request::populate_opts() {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
-        _type = _session._default_type;
-        _accept = _session._default_accept;
-        _user_agent = _session._default_user_agent;
-        _hook = _session.make_req_data_caller();
-        _body.reset();
+        assert(_session);
+        _type = _session->_default_type;
+        _accept = _session->_default_accept;
+        _user_agent = _session->_default_user_agent;
+        _hook = _session->make_req_data_caller();
+        _request_body.reset();
+        _response_body.reset();
+        _response_code = 0;
+        _response_line.clear();
     }
 
     void http_request::populate_opts(request_opts opts) {
         unlog::trace("{} called", __PRETTY_FUNCTION__);
+        assert(_session);
 
         if (opts.media_type)
             _type = *opts.media_type;
         else
-            _type = _session._default_type;
+            _type = _session->_default_type;
 
         if (opts.accept)
             _accept = *opts.accept;
         else
-            _accept = _session._default_accept;
+            _accept = _session->_default_accept;
 
         if (opts.ua)
             _user_agent.swap(opts.ua);
         else
-            _user_agent = _session._default_user_agent;
+            _user_agent = _session->_default_user_agent;
 
         if (opts.data_cb)
-            _hook = _session.make_req_data_caller(std::move(*opts.data_cb));
+            _hook = _session->make_req_data_caller(std::move(*opts.data_cb));
         else
-            _hook = _session.make_req_data_caller();
+            _hook = _session->make_req_data_caller();
 
         if (opts.flags & std::to_underlying(hdr_flags::CLOSE)) {
             unlog::critical("GOOD");
             _close_session_on_complete = true;
         }
 
-        _body = std::move(opts.body);
+        _request_body = std::move(opts.body);
     }
 
     http_req_ptr http_request::construct(
@@ -201,14 +229,27 @@ namespace wshttp {
         return ret;
     }
 
+    std::shared_ptr<http_request> http_request::construct_inbound(struct evhttp_request* req, request_id_t id) {
+        std::shared_ptr<http_request> ret;
+
+        try {
+            ret = std::shared_ptr<http_request>(new http_request{id, req});
+        } catch (const std::exception& e) {
+            unlog::critical("inbound http_request construction exception: {}", e.what());
+        }
+
+        return ret;
+    }
+
     void http_request::signal_close(bool close_session) {
+        assert(_session);
         if (close_session) {
             unlog::debug("Signalling outbound termination of remote session");
-            _session.close();
+            _session->close();
         }
         else {
             unlog::debug("Signalling outbound session to close completed request (id:{})", _request_id);
-            _session.close_request(_request_id);
+            _session->close_request(_request_id);
         }
     }
 
@@ -219,6 +260,10 @@ namespace wshttp {
 
     void http_request::test_method() {
         unlog::critical("inner ptr hash: {}", hash_reqptr(_req.get()));
+    }
+
+    std::string http_request::to_string() const {
+        return "http_request[ id:{} | method:{} ]"_format(_request_id, detail::get_method_string(method()));
     }
 
     void http_request::request_recv(struct evhttp_request* req) {
@@ -245,10 +290,13 @@ namespace wshttp {
         int code{evhttp_request_get_response_code(_req.get())};
         std::string_view line{evhttp_request_get_response_code_line(_req.get())};
 
+        _response_code = code;
+        _response_line.assign(line.begin(), line.end());
+
         auto* evbuffer = evhttp_request_get_input_buffer(_req.get());
 
         int nread = evbuffer_get_length(evbuffer);
-
+        // validate ptr held internally references the same object as libevent provides us
         unlog::debug("bufsize={}, code={}, line={}", nread == nread_comp, code == code1, line == line1);
 
         unlog::info(
@@ -265,10 +313,13 @@ namespace wshttp {
             return signal_close(true);
         }
 
-        if (buf.back() != '\n')
+        if (buf.back() != '\n') {
             buf.push_back('\n');
+        }
 
         unlog::debug("{}B read from request response body (id:{})", nread, _request_id);
+
+        _response_body = buf;
 
         if (_hook)
             _hook(std::move(buf));

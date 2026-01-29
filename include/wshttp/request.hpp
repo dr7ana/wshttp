@@ -3,7 +3,7 @@
 #include "listener.hpp"
 #include "opts.hpp"
 
-#include <bitset>
+#include <list>
 
 namespace wshttp {
     namespace deleters {
@@ -25,8 +25,6 @@ namespace wshttp {
 
     using evreq_ptr = std::unique_ptr<evhttp_request, deleters::_evreq>;
     using request_ptr_list = std::list<http_req_ptr>;
-
-    using request_id_t = size_t;
 
     /**
     - case insensitive; lowercase preferred (RFC 9110)
@@ -101,6 +99,8 @@ namespace wshttp {
                 METHOD m,
                 std::optional<request_opts> opts = std::nullopt);
 
+        static std::shared_ptr<http_request> construct_inbound(struct evhttp_request* req, request_id_t id);
+
         ~http_request();
 
       protected:
@@ -113,12 +113,14 @@ namespace wshttp {
                 METHOD m,
                 std::optional<request_opts> opts = std::nullopt);
 
+        explicit http_request(request_id_t id, struct evhttp_request* req);
+
       private:
         const request_id_t _request_id;
 
-        // TODO: make this a reference to a socket_interface for the http_request base
+        // TODO: make this a ptr to a socket_interface for the http_request base
         // Keep in order, hook made by generator
-        outbound_session& _session;
+        outbound_session* _session{nullptr};
         request_data_cb _hook;  // TODO: outbound only
 
         evreq_ptr _req;
@@ -129,7 +131,10 @@ namespace wshttp {
         content_type _type;
         content_type _accept;
         std::optional<std::string> _user_agent;
-        std::optional<std::vector<char>> _body;
+        std::optional<std::vector<char>> _request_body;
+        std::optional<std::vector<char>> _response_body;
+        int _response_code{};
+        std::string _response_line{};
 
         std::atomic<bool> _close_session_on_complete{false};
 
@@ -144,7 +149,31 @@ namespace wshttp {
       public:
         void test_method();
 
+        request_id_t request_id() const { return _request_id; }
+
+        METHOD method() const { return _method; }
+
+        std::string_view request_body() const {
+            if (_request_body)
+                return std::string_view{_request_body->data(), _request_body->size()};
+            return {};
+        }
+
+        std::string_view response_body() const {
+            if (_response_body)
+                return std::string_view{_response_body->data(), _response_body->size()};
+            return {};
+        }
+
+        int response_code() const { return _response_code; }
+
+        std::string_view response_line() const { return _response_line; }
+
         void request_recv(struct evhttp_request* req);
+
+        std::string to_string() const;
+
+        static constexpr bool to_string_formattable = true;
 
         auto operator<=>(const http_request& req) const {
             return std::tie(_request_id, *_uri) <=> std::tie(req._request_id, *req._uri);

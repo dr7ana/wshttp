@@ -17,72 +17,66 @@ namespace wshttp {
     struct session_base {
         //
     };
+    /*
+        class inbound_session {
+            friend class listener;
+            using request_handler_direct = void (inbound_session::*)(struct evhttp_request* req);
+            using request_handler_hook = std::function<void(std::vector<char>)>;
 
-    struct inbound_session {
-        friend class listener;
+          public:
+            explicit inbound_session(
+                    listener& l, ip_address remote, evutil_socket_t sock, std::optional<inbound_opts> opts =
+       std::nullopt);
 
-        explicit inbound_session(
-                /* listener& l, */ ip_address remote,
-                evutil_socket_t sock,
-                std::optional<inbound_opts> opts = std::nullopt);
+            ~inbound_session();
 
-        ~inbound_session();
+          private:
+            // listener& _l;
 
-      private:
-        // listener& _l;
+            path _path;
 
-        path _path;
+            evutil_socket_t _fd{-1};
 
-        evutil_socket_t _fd{-1};
+            void register_handlers();
 
-        // request handlers
-        void recv_unsupported(struct evhttp_request* req);
-        void recv_get(struct evhttp_request* req);
-        void recv_post(struct evhttp_request* req);
-        void recv_head(struct evhttp_request* req);
-        void recv_put(struct evhttp_request* req);
-        void recv_delete(struct evhttp_request* req);
-        void recv_options(struct evhttp_request* req);
-        void recv_trace(struct evhttp_request* req);
-        void recv_connect(struct evhttp_request* req);
-        void recv_patch(struct evhttp_request* req);
+            // request handlers
+            void recv_unsupported(struct evhttp_request* req);
+            void recv_get(struct evhttp_request* req);
+            void recv_post(struct evhttp_request* req);
+            void recv_head(struct evhttp_request* req);
+            void recv_put(struct evhttp_request* req);
+            void recv_delete(struct evhttp_request* req);
+            void recv_options(struct evhttp_request* req);
+            void recv_trace(struct evhttp_request* req);
+            void recv_connect(struct evhttp_request* req);
+            void recv_patch(struct evhttp_request* req);
 
-        using request_handler_direct = void (inbound_session::*)(struct evhttp_request* req);
+            std::array<request_handler_direct, 10> handlers{
+                    &inbound_session::recv_unsupported,
+                    &inbound_session::recv_get,
+                    &inbound_session::recv_post,
+                    &inbound_session::recv_head,
+                    &inbound_session::recv_put,
+                    &inbound_session::recv_delete,
+                    &inbound_session::recv_options,
+                    &inbound_session::recv_trace,
+                    &inbound_session::recv_connect,
+                    &inbound_session::recv_patch};
 
-        std::array<request_handler_direct, 10> handlers{
-                &inbound_session::recv_unsupported,
-                &inbound_session::recv_get,
-                &inbound_session::recv_post,
-                &inbound_session::recv_head,
-                &inbound_session::recv_put,
-                &inbound_session::recv_delete,
-                &inbound_session::recv_options,
-                &inbound_session::recv_trace,
-                &inbound_session::recv_connect,
-                &inbound_session::recv_patch};
+            std::array<request_handler_hook, 10> request_handlers{};
 
-      protected:
-        void recv_request(struct evhttp_request* req);
+          protected:
+            void recv_request(struct evhttp_request* req);
 
-      public:
-        //
-    };
-
-    /** TODO:
-            - interface base class for outbound_session to be derived from
-            - pure virtual methods to be exposed publicly
+          public:
+            //
+        };
      */
-    struct session_interface {
-        //
-    };
-
     class outbound_session final : public socket_interface {
       protected:
         explicit outbound_session(endpoint& ep, uri_ptr u, std::optional<session_opts> opts = std::nullopt);
 
       public:
-        // static std::shared_ptr<outbound_session> make_outbound(endpoint& e, uri u);
-
         outbound_session() = delete;
 
         ~outbound_session();
@@ -107,8 +101,6 @@ namespace wshttp {
         uri_ptr _uri;
 
         std::atomic<request_id_t> _next_request_id{};
-
-        // request_ptr_set _request_que;
 
         request_ptr_list _request_que;
 

@@ -14,6 +14,8 @@ namespace wshttp {
     using uspan = unlog::uspan;
     using bspan = unlog::bspan;
 
+    using request_id_t = size_t;
+
     using namespace unlog::literals;
     using namespace un::log::operators;
 

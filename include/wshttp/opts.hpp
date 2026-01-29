@@ -3,6 +3,7 @@
 #include "types.hpp"
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -10,6 +11,8 @@
 #include <vector>
 
 namespace wshttp {
+    struct http_request;
+
     enum class METHOD : uint8_t {
         UNSUPPORTED = 0,
         GET = 1,
@@ -76,8 +79,8 @@ namespace wshttp {
     template <typename F>
     concept request_func = void_func<F, std::vector<char>>;
 
-    using inbound_generic_handler = std::function<void(METHOD, struct evhttp_request*)>;
-    using inbound_method_handler = std::function<void(struct evhttp_request*)>;
+    using inbound_generic_handler = std::function<void(std::shared_ptr<http_request>)>;
+    using inbound_method_handler = std::function<void(std::shared_ptr<http_request>)>;
 
     namespace detail {
         template <typename T, typename E>
@@ -117,7 +120,7 @@ namespace wshttp {
         }
 
         std::unordered_map<METHOD, inbound_method_handler> handlers;
-        inbound_generic_handler generic_handler;
+        std::optional<inbound_generic_handler> generic_handler{std::nullopt};
 
         void handle_iopt(std::pair<METHOD, inbound_method_handler> method_handler) {
             handlers.emplace(std::move(method_handler));
@@ -126,7 +129,6 @@ namespace wshttp {
         void handle_iopt(inbound_generic_handler generic) { generic_handler = std::move(generic); }
 
         friend class listener;
-        friend struct inbound_session;
     };
 
     struct session_opts {
